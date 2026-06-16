@@ -107,8 +107,13 @@ Example output *style* (the LLM generates it, not a fixed template) `[Warmup PDF
 > Would love to connect."
 
 **Send the invite via Unipile (JSON) `[Contract]`:** `POST {UNIPILE_DSN}/api/v1/users/invite`
-`{ account_id, provider_id, message? }`, header `X-API-KEY`. **If `UNIPILE_DSN` is absent → POST a
-blocker for touch 10 and continue** (touches 1–9 still ran via Composio).
+`{ account_id, provider_id, message? }`, header `X-API-KEY`. **`UNIPILE_DSN` must be the FULL base URL incl.
+scheme + port** — e.g. `https://api8.unipile.com:13443` (so `{UNIPILE_DSN}/api/v1/...` resolves; a bare host with
+no `https://` fails). The `account_id` is a **LinkedIn account connected INSIDE Unipile** (Unipile ≠ Composio —
+connect one in the Unipile dashboard; the Composio LinkedIn does NOT work here). First call `GET
+{UNIPILE_DSN}/api/v1/accounts` (header `X-API-KEY`) to get the `account_id`. **If `UNIPILE_DSN` is
+absent/misformatted or no Unipile LinkedIn account exists → POST a blocker for touch 10 and continue** (touches
+1–9 still ran via Composio).
 
 ## What the agent needs per person — already in the scrape `[Warmup PDF]`
 

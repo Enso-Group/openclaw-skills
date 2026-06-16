@@ -25,9 +25,12 @@ contract (real tables/tools only — no invented columns). Read this when FIND n
    Empty / `paused=true` / `autonomous=false` → STOP cleanly. If `paused` flips true mid-run, stop
    immediately. Keep `min_score` (**default 16**, matches `[Build list]`'s "keep 16+") and `stages`.
 2. **`stages.find` must be true** — else skip FIND, run the other stages.
-3. **Anchor a mission per use-case.** `GET openclaw_missions?select=id,kind,use_case_id,status&order=created_at.desc`.
-   `mission_id` is **REQUIRED for `openclaw_results_staging`**. A use-case with **no mission → SKIP its
-   FIND with a blocker event and continue** (engagement/decision-log still run).
+3. **Anchor a mission per use-case (AUTO-CREATE if missing).** `GET openclaw_missions?select=id,kind,use_case_id,status&order=created_at.desc`.
+   `mission_id` is **REQUIRED for `openclaw_results_staging`**. A use-case with **no mission → CREATE one yourself**
+   (you own the work; no human mission needed): `POST /rest/v1/openclaw_missions
+   {workspace_id, kind:"build_list", status:"dispatched", use_case_id, title:"FIND — <use-case>", brief:{"auto":true}}`
+   with `Prefer: return=representation` to read back its `id`. Reuse it on later fires — one build_list mission per
+   use-case, never create a second (idempotent). Then proceed with FIND. **Never skip FIND for "no mission."**
 4. **Read the compass (once):** `gtm_use_cases` (active queues = one per ICP), `gtm_personas`
    (titles, stage→size, pain), `gtm_keywords`, `gtm_geo_questions` (the 11pm questions),
    `gtm_brands`, `target_geography`, `openclaw_playbooks`.
@@ -109,8 +112,10 @@ company's LinkedIn size looks wrong for the ICP stage (e.g. a "Series A" showing
 
 ## 3. Step 2 — Query for REAL people (Apollo and/or Apify) `[Contract]` + `[Build list]`
 
-Verify **each** returned person on a **real page** before scoring (R0). Use either or both tools;
-if one is unavailable, run the other — **never stop for "no geography."**
+**Apollo's returned record (real `name` + `linkedin_url`) IS the verified source for that person** — you do NOT
+need to separately open each LinkedIn page to stage it (that over-strict gate produced 0 finds). Only skip a person
+whose Apollo `name` is partial/obfuscated or who has no `linkedin_url` (R0). Apify/browser enrichment is OPTIONAL.
+Use either or both tools; if one is unavailable, run the other — **never stop for "no geography."**
 
 ### 3a. Apollo (`APOLLO_API_KEY`) — the default, runs now `[Contract]`
 - **Endpoint — use EXACTLY this** (the old `mixed_people/search` is DEPRECATED → HTTP 422):
@@ -121,9 +126,13 @@ if one is unavailable, run the other — **never stop for "no geography."**
 - `person_titles` — **REQUIRED** (all title variants from the ICP Title field).
 - `person_locations` — **OPTIONAL** (use `target_geography` / persona geography if present, else
   **OMIT** — never stop for missing geography).
-- `api_search` returns **obfuscated** names + no direct email — treat the result as a candidate list:
-  **verify each person on their real LinkedIn page (R0)** to get the real profile URL (your `source_url`)
-  before scoring/staging; leave `email:""` (enriched later).
+- `api_search` returns each person with a real `name`, `title`, `organization`, and (usually) `linkedin_url`;
+  emails are locked (leave `email:""`, enriched later). **Apollo IS a real, opened data source — use the person's
+  Apollo-returned `linkedin_url` as the `source_url` and stage the person directly; you do NOT need to separately
+  open each LinkedIn page.** Only SKIP a returned person when Apollo gives a **partial/obfuscated name** (e.g.
+  "John D.") or **no `linkedin_url`** (R0 — never stage a partial name); if a browser/Apify is available you MAY
+  enrich those instead of skipping. **Never drop a person who has a real name + `linkedin_url` just because you
+  didn't manually open the page** — that over-strict gate is what silently produced 0 finds.
 - Company-size (stage→size) and pain-keyword targeting then apply as **Filter Pass 1 + scoring** on
   the returned people (§4–§5); titles are the only required param and geography is never a stopper.
 
@@ -200,7 +209,9 @@ field** for "Assigned To"). Map the source's columns to the payload fields that 
 Job Title, Company, Location, LinkedIn URL, Score); "Use Case" = the mission / use-case scope.
 
 **(a) Stage each kept person** (only `score ≥ min_score`; status defaults to `staged`; never set
-`imported_at`). Send `Prefer: return=minimal`.
+`imported_at`). Send `Prefer: return=minimal`. **You CAN now GET `openclaw_results_staging` (token-scoped SELECT)**
+to (i) confirm your finds landed and (ii) build the already-staged `linkedin_url` set for idempotency. A 42501 on
+that GET means the read-back grant migration isn't applied yet — fall back to your own run tally and continue.
 
 ```json
 POST /rest/v1/openclaw_results_staging
@@ -208,7 +219,7 @@ POST /rest/v1/openclaw_results_staging
   "workspace_id": "<ws>",
   "mission_id": "<REQUIRED — the use-case mission from §0.3>",
   "row_kind": "person",
-  "source_url": "<the REAL LinkedIn profile / page you opened and verified>",
+  "source_url": "<the Apollo-returned linkedin_url for this person (a real URL) — or a page you opened>",
   "payload": {
     "full_name": "...",
     "job_title": "...",
@@ -230,16 +241,21 @@ POST /rest/v1/openclaw_results_staging
 > hand-off. (PRD lifecycles confirm the receiving side: companies `new → leads_found → exhausted →
 > excluded`; leads `ready → engaging → …`.)
 
-**(b) Record yield per source** (lets the next fire learn where to spend hunting time — §8):
+**(b) Record yield per source — UPSERT, never a plain INSERT.** The row is unique on
+`(workspace, lower(platform), lower(query))`; re-running the same query each fire must UPDATE the counts, not
+collide. Send the header **`Prefer: resolution=merge-duplicates`** (you hold INSERT+UPDATE on `gtm_sources`). A
+`409 duplicate key (gtm_sources_key_uq)` means you used a plain INSERT — retry with the merge-duplicates header;
+it is never a real blocker. This lets the next fire learn where to spend hunting time (§8):
 
 ```json
-POST /rest/v1/gtm_sources
+POST /rest/v1/gtm_sources   // headers as above PLUS  Prefer: resolution=merge-duplicates
 {
   "workspace_id": "<ws>",
   "platform": "apollo",            // or "apify" | "linkedin"
   "query": "<the exact title/keyword/location query you ran>",
   "prospects_found": 120,          // people returned + verified
-  "qualified": 41                  // how many scored ≥ min_score
+  "qualified": 41,                 // how many scored ≥ min_score
+  "last_used_at": "<iso now>"
 }
 ```
 
@@ -306,9 +322,9 @@ Before querying, read what prior fires learned and adapt; after, leave signal fo
 |---|---|
 | `paused=true` / `autonomous=false` / no settings | STOP cleanly |
 | `stages.find` false | skip FIND, run other stages |
-| Use-case has no mission | SKIP its FIND + blocker (staging needs `mission_id`); continue |
+| Use-case has no mission | CREATE a build_list mission (§0.3) then run FIND — never skip for this |
 | Apify cookie/actor missing | blocker; continue with Apollo |
-| A person can't be verified on a real page | drop them (no `source_url` → no row) |
+| A person has no real name OR no `linkedin_url` | skip just that person (no verifiable source → no row); keep the rest |
 | `score < min_score` | discard (do not stage) |
 | 42501 on a write **with** `Prefer: return=minimal` | real permission problem → blocker |
 | Any tool/login/page failure | blocker event for FIND, move to next use-case/stage |

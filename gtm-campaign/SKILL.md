@@ -42,12 +42,17 @@ GET `gtm_pipeline_settings?select=autonomous,paused,auto_import,min_score,stages
 Empty / `paused=true` / `autonomous=false` → STOP cleanly. Keep `min_score` (default 16), `daily_caps`, and the
 per-stage `stages` toggles {find,warmup,message,test,engagement}. If `paused` flips true mid-run, STOP immediately.
 
-## STEP 0.5 — ANCHOR MISSION (required: events + finds are mission-scoped)
+## STEP 0.5 — ANCHOR MISSION (auto-create one per ICP; finds are mission-scoped)
 GET `openclaw_missions?select=id,kind,use_case_id,status&order=created_at.desc` (RLS-scoped to your workspace).
 Per active use-case hold a `MISSION_ID`: prefer a `dispatched`/`running` mission whose `use_case_id` matches, else
-the newest mission. For `openclaw_mission_events`, `mission_id` is OPTIONAL — include it when present, but the live
-log writes fine without it (no manual mission required). For `openclaw_results_staging` (FIND), `mission_id` is still
-required — if a use-case has NO mission, SKIP its FIND with a blocker and still run engagement + the decision log.
+the newest mission for that use-case. **If an active use-case has NO mission, CREATE one yourself** — you own the
+work end-to-end; no human/manual mission is needed:
+`POST /rest/v1/openclaw_missions {workspace_id, kind:"build_list", status:"dispatched", use_case_id:"<uc>",
+title:"FIND — <use-case name>", brief:{"auto":true,"source":"gtm-campaign"}}` with `Prefer: return=representation`
+to read back the new `id` (this is the ONE write that needs the id back; every other write stays `return=minimal`).
+Reuse that mission on later fires — **one build_list mission per use-case; never create a second** (idempotent).
+For `openclaw_mission_events`, `mission_id` is OPTIONAL; for `openclaw_results_staging` (FIND) it is REQUIRED — and
+now always available because you just ensured every active ICP has one. Never skip FIND for "no mission" again.
 
 ## READ STRATEGY (once) — this is what "all ICPs" means
 GET `gtm_use_cases` (the ACTIVE use-cases = your queues, one per ICP) · `gtm_personas` (titles, size, pain) ·

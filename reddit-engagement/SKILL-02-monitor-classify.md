@@ -10,14 +10,14 @@ Enforce a mandatory observation period and a continuous read pass: passively mon
 - After the window, monitoring still runs first each loop as the read pass that feeds SKILL-03, bounded by the daily cap.
 
 ## Connection (every REST call)
-`${PLATFORM_URL}/rest/v1/<table>` · headers `apikey`+`Authorization: Bearer ${PLATFORM_ANON_KEY}` · `x-agent-token: ${PLATFORM_AGENT_TOKEN}` · `Content-Type: application/json`. Reddit reads via the Composio account (read-only). Every POST adds `Prefer: return=minimal`.
+`${PLATFORM_URL}/rest/v1/<table>` · headers `apikey`+`Authorization: Bearer ${PLATFORM_ANON_KEY}` · `x-agent-token: ${PLATFORM_AGENT_TOKEN}` · `Content-Type: application/json`. **Reddit READS (threads, comments, subreddit rules) use the OpenClaw browser tool** on the public page — `https://www.reddit.com/r/<sub>/`, `.../new/`, `.../about/rules/`, and Reddit search — which need **no login**. Use Composio Reddit READ actions only as a fallback; if neither is available, POST a blocker and skip (never guess rules/threads from memory). Composio Reddit is still used to POST the comment after human approval. Every POST adds `Prefer: return=minimal`.
 
 ## Workflow (deterministic)
 1. **Honor STOP (R4).** GET `gtm_pipeline_settings?select=autonomous,paused,stages`; stop cleanly if empty / `paused=true` / `autonomous=false` / `stages.engagement=false`. Determine whether the **observation window** is still active (if so, no drafting this run, even post-handoff).
 2. **Load the approved boundary.** GET `social_engagement_settings?select=enabled,posting_mode,daily_cap,targets,topics,guardrails` — `targets`=`[{type:'subreddit',value,active}]` (only `active=true` subreddits), `guardrails`=`{require_disclosure, avoid[]}`, plus `gtm_brands`/`gtm_voice_rules` for the help judgement (narrow IDENTITY scope).
 3. **Real-time learning — read before classifying (R6).** GET `social_engagement_actions?select=target_url,source_url,status,metrics,occurred_at&order=occurred_at.desc&limit=100` (own workspace, readable). Use it to: (a) **idempotency** — build the set of already-engaged `source_url`/`permalink`; (b) **demote/skip** any subreddit with a removal (`metrics.removed`), heavy negatives, or `rejected`/`failed` history → classify it `risk_level=high` and do not advance it. `openclaw_mission_events` is **write-blind** — don't GET it; this run's blockers live in context.
-4. **Daily subreddit review — re-read live rules FIRST (Skill 3 §1, R0.4).** For each active target, re-read its live rules via Composio **before** looking at any thread, to catch sudden changes (promotion / links / AI-content / temporary bans like megathreads). If a subreddit now bans the activity → skip it this run.
-5. **Find new threads.** Scan for **new** threads where people ask questions related to the brand category. Skip off-topic threads and any thread already engaged (step 3 set).
+4. **Daily subreddit review — re-read live rules FIRST (Skill 3 §1, R0.4).** For each active target, open its live rules in the **OpenClaw browser** (`https://www.reddit.com/r/<sub>/about/rules/`) **before** looking at any thread, to catch sudden changes (promotion / links / AI-content / temporary bans like megathreads). Composio read = fallback. If neither tool works → POST a blocker for that subreddit and skip it this run. If a subreddit now bans the activity → skip it this run.
+5. **Find new threads.** In the browser, open the subreddit `new`/`top` feed and Reddit search for the brand-category keywords; scan for **new** threads where people ask questions related to the brand category. Skip off-topic threads and any thread already engaged (step 3 set).
 6. **Classify each relevant thread** with all seven fields (Skill 3 §2), each grounded in a page opened this run:
    - `subreddit` — the community name.
    - `thread_title` — the **exact live title** (never paraphrased/invented).
@@ -39,7 +39,7 @@ Enforce a mandatory observation period and a continuous read pass: passively mon
 | Approved subreddits + global guardrails | `social_engagement_settings` (`targets`,`guardrails`,`topics`,`daily_cap`,`posting_mode`) | R |
 | Real-time learning + idempotency (R6) | `social_engagement_actions` (`source_url`,`target_url`,`status`,`metrics`) | R |
 | Narrow scope for help judgement | `gtm_brands`, `gtm_voice_rules` | R |
-| Live subreddit rules + new threads | Reddit via Composio (`social_accounts` engagement), re-read this run | R |
+| Live subreddit rules + new threads | Reddit **public pages via the OpenClaw browser** (Composio read = fallback), re-read this run | R |
 | Daily report / classifications + failures | `openclaw_mission_events` (`progress` report · `blocker`) | W (INSERT, no SELECT) |
 
 ## Anti-hallucination & guardrails
