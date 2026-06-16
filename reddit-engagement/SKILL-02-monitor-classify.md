@@ -18,10 +18,15 @@ Enforce a mandatory observation period and a continuous read pass: passively mon
 
 **Reddit READS go through the Composio REST API DIRECTLY** (NOT the browser, NOT Clawdi's built-in Composio MCP):
 `POST https://backend.composio.dev/api/v3/tools/execute/<SLUG>` with header `x-api-key: ${COMPOSIO_API_KEY}` and body
-`{"user_id":"<workspace_id>","arguments":{...},"version":"latest"}`.
-- **CRITICAL — `user_id` MUST be the workspace id.** The Reddit (and LinkedIn) account is connected **in the app
-  (Lovable)** under entity = workspace id, using THIS SAME `COMPOSIO_API_KEY`. Calling with that key + that `user_id`
-  reuses the app's connection — that is how Clawdi and Lovable stay synced through Composio.
+`{"user_id":"<entity>","arguments":{...},"version":"latest"}`.
+- **CRITICAL — resolve the `user_id` (entity) from the app at runtime; do NOT hardcode the workspace id.** GET
+  `social_accounts?select=id,composio_user_id,composio_connected_account_id,status,platform,purpose&purpose=eq.engagement&platform=eq.reddit&status=eq.connected`
+  (standard agent headers; `social_accounts` is now token-readable). Use the row's `composio_user_id` as the Composio
+  entity (`user_id`), its `id` as `social_account_id`, and `composio_connected_account_id` when a tool needs it — this
+  reuses the app's connection (THIS SAME `COMPOSIO_API_KEY`), so Clawdi and Lovable stay synced through Composio.
+  **Fallback:** `composio_user_id` null on the row → use the workspace id as the entity. **If NO connected reddit
+  engagement row exists** → POST an `openclaw_mission_events` blocker (message: "no connected Reddit engagement account
+  — connect it in the app") and STOP the engagement run cleanly.
 - **Do NOT use Clawdi's built-in Composio MCP tools (`clawdi__COMPOSIO_*`)** — that is a DIFFERENT Composio
   account/entity and will falsely report "no active connection". **NEVER call `COMPOSIO_MANAGE_CONNECTIONS` / create a
   new connection** — the human owns connect/disconnect in the app; you only USE the connection.
@@ -30,8 +35,8 @@ Enforce a mandatory observation period and a continuous read pass: passively mon
   `REDDIT_GET_R_TOP` (`subreddit`, `t:"day"/"week"`) for recent threads · `REDDIT_RETRIEVE_REDDIT_POST` +
   `REDDIT_RETRIEVE_POST_COMMENTS` (`article`=base-36 id) for detail. The result `permalink` is your `source_url`.
 - The OpenClaw browser + direct HTTP are unreliable for Reddit (browser 404s; reddit.com 403-blocks datacenter IPs) —
-  last resort only. If executing a slug with `user_id=<workspace_id>` returns a genuine "no active connection", POST a
-  blocker (the human re-connects Reddit in the app) and skip — do NOT create one yourself.
+last resort only. If executing a slug with the resolved entity returns a genuine "no active connection", POST a
+blocker (the human re-connects Reddit in the app) and skip — do NOT create one yourself.
 
 Composio also POSTs the approved comment via the same REST execute path. Every PLATFORM POST adds `Prefer: return=minimal`.
 
@@ -62,7 +67,8 @@ Composio also POSTs the approved comment via the same REST execute path. Every P
 | Approved subreddits + global guardrails | `social_engagement_settings` (`targets`,`guardrails`,`topics`,`daily_cap`,`posting_mode`) | R |
 | Real-time learning + idempotency (R6) | `social_engagement_actions` (`source_url`,`target_url`,`status`,`metrics`) | R |
 | Narrow scope for help judgement | `gtm_brands`, `gtm_voice_rules` | R |
-| Live subreddit rules + new threads | **Composio Reddit toolkit** (`REDDIT_GET_SUBREDDIT_RULES`, `REDDIT_SEARCH_ACROSS_SUBREDDITS`, `REDDIT_GET_R_TOP`, `REDDIT_RETRIEVE_REDDIT_POST`/`_POST_COMMENTS`), entity = workspace id; `permalink` = `source_url`. Browser/HTTP unreliable (404/403) | R |
+| Resolve Composio entity + account id | `social_accounts` (`composio_user_id`=entity/`user_id` [fallback workspace id], `id`=`social_account_id`, `composio_connected_account_id`; `purpose='engagement'`,`platform='reddit'`,`status='connected'`) | R |
+| Live subreddit rules + new threads | **Composio Reddit toolkit** (`REDDIT_GET_SUBREDDIT_RULES`, `REDDIT_SEARCH_ACROSS_SUBREDDITS`, `REDDIT_GET_R_TOP`, `REDDIT_RETRIEVE_REDDIT_POST`/`_POST_COMMENTS`), entity = resolved `composio_user_id` (fallback workspace id); `permalink` = `source_url`. Browser/HTTP unreliable (404/403) | R |
 | Daily report / classifications + failures | `openclaw_mission_events` (`progress` report · `blocker`) | W (INSERT, no SELECT) |
 
 ## Anti-hallucination & guardrails

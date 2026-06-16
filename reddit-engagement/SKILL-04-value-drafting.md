@@ -41,7 +41,15 @@ false → do not draft.
    - **No unprompted product mention** — only if the user explicitly asked for tools/recommendations
      AND the subreddit allows it (defer to SKILL-05).
    - **No unprompted links** — same gate as SKILL-05.
-   - **Tailored** — written for this thread only; never reuse/duplicate a prior comment (R1).
+   - **UNIQUE + thread-specific (NON-NEGOTIABLE).** Each draft MUST directly answer THAT thread's actual
+     question/situation. **NEVER reuse, paraphrase-clone, or template the same body across two threads.**
+     Before writing each draft, compare the candidate text against (a) **every other draft you created THIS
+     run** and (b) the **recent rows you can read back** via GET `social_engagement_actions` (you have
+     SELECT). If the new body is substantially the same as any of them → **REWRITE** it for this specific
+     thread, or **SKIP** the thread. (Identical copy-paste across threads = an instant Reddit spam flag.)
+   - **ON-TOPIC gate (NON-NEGOTIABLE).** If the brand/persona cannot GENUINELY help THIS specific thread
+     (e.g. a payments brand on a thread about LLM benchmarks) → **SKIP** it. NEVER force a generic brand
+     pitch onto an unrelated thread. A skipped thread is free; a spammy/irrelevant comment is a ban risk.
 6. **Shape it like a real comment.** Open by addressing their **actual situation** (no preamble, no
    "Great question"); give the **one specific, actionable answer** (the *how*); add at most **one**
    concrete real detail or example; end naturally — **no** salesy CTA, **no** summarizing-conclusion
@@ -54,10 +62,22 @@ false → do not draft.
    summary** quoted from the page re-read this run; (b) **why this thread is relevant**; (c) **risk
    level**; (d) the **final draft comment**.
 9. **Write ONE draft row** to `social_engagement_actions` (see System mapping): `status='draft'`,
-   `source_url` REQUIRED (the exact page read), `created_by=null`; **never** set `external_id` /
-   `permalink` / `published_at` / `approved_by`. Carry the payload as `content` (draft) + `evidence`
-   (why-relevant) + `metadata` (rules summary + risk + any SKILL-05/SKILL-06 stamp). Send `Prefer:
-   return=minimal`. **Stamp `metadata` NOW** — the agent's column grant can't add it after insert.
+   `created_by=null`; **never** set `external_id` / `permalink` / `published_at` / `approved_by`. Carry the
+   payload as `content` (draft) + `evidence` (why-relevant). **Set the full DESTINATION** so the app's feed
+   can show WHERE the comment goes and so it's postable — ALL of:
+   - `source_url` REQUIRED — the page you actually opened (the permalink is fine).
+   - `target_url` — the REAL thread permalink as a full clickable https URL
+     (`https://www.reddit.com/r/<sub>/comments/<id>/<slug>/`).
+   - `target_kind` — `'post'` for a comment/reply on a post, `'subreddit'` for a new post.
+   - `title` — the EXACT live thread title (verbatim, never invented).
+   - `social_account_id` — the engagement account id resolved from `social_accounts` (the row's `id` — see
+     System mapping; the same `composio_user_id` is the publish entity).
+   - `metadata` MUST include (**stamped NOW** — the agent's column grant can't add metadata after insert):
+     `subreddit` (the name without "r/", e.g. `"AI_Agents"`); `parent_fullname` = `'t3_'` + the base-36 post
+     id parsed from the permalink (the id between `/comments/` and the next `/`) — this is what the publisher
+     passes to `REDDIT_POST_REDDIT_COMMENT` as `thing_id` (for a reply to a comment, use that comment's
+     `'t1_<id>'`); plus `subreddit_rules_summary`, `risk`, `compliance`, and any SKILL-05/SKILL-06 stamp.
+   Send `Prefer: return=minimal`.
 10. **Log telemetry.** POST a `progress` event to `openclaw_mission_events` with real counts
     (`created_by` null). Loop to the next eligible thread until the cap is reached.
 11. **Do NOT post.** Publishing is a separate, post-approval step (approve_first loop). This skill
@@ -68,6 +88,8 @@ false → do not draft.
 - It hands over a **specific, actionable** step they could act on today — not generic platitudes.
 - It still reads as useful with **any product mention/link deleted** (R3).
 - It would plausibly earn an upvote **with the brand removed** — it helps the community, it doesn't sell.
+- It is **UNIQUE + on-topic** — not a clone/paraphrase of any other draft (this run or a recent readable
+  row), and not a generic pitch forced onto an unrelated thread. Fails this → rewrite or SKIP.
 
 ## Real-time learning (read prior outcomes → bias this draft)
 The agent can SELECT `social_engagement_actions` (its `gtm_ab_*` tables are write-blind), so it
@@ -97,10 +119,11 @@ reconstructs what worked from there and steers the new draft accordingly:
 | Hard comment bound | `gtm_pipeline_settings.daily_caps.comments` (default 10); effective cap = `min(daily_cap, daily_caps.comments)`, start **3, TOTAL** |
 | Voice / positioning / claims | `gtm_voice_rules` (say/never-say/tone), `gtm_brands` (`positioning_line`,`what_we_do`,`biggest_edge`), `gtm_proof_points` (`is_citable=true`); one-read `gtm_brand_book` |
 | Prior outcomes (learning) | `social_engagement_actions?status=eq.published` → `metrics` (`upvotes`,`replies`,`downvotes`,`removed`,`negative_replies`) + `metadata.variant_label`; agent **SELECT** only |
-| The draft (agent INSERT) | `social_engagement_actions` { `workspace_id`, `mission_id?`, `social_account_id?`, `platform:'reddit'`, `action_type:'comment'`\|`'post'`, `target_url`, `target_kind:'post'`\|`'subreddit'`, `source_url` (NOT NULL), `title` (posts only), `content` (the draft), `evidence` (why-relevant), `metadata` (rules summary + risk), `status:'draft'`, `created_by:null` } · `Prefer: return=minimal` |
-| Review payload carrier | `content` = draft · `evidence` = why-relevant · `metadata.subreddit_rules_summary` + `metadata.risk` (shown on `…/social-engagement/engagements`) |
+| Resolve Composio entity + account id | `social_accounts?purpose=eq.engagement&platform=eq.reddit&status=eq.connected` → `composio_user_id` (the entity/`user_id`, fallback workspace id), `id` (=`social_account_id`), `composio_connected_account_id`; agent **SELECT** |
+| The draft (agent INSERT) | `social_engagement_actions` { `workspace_id`, `mission_id?`, `social_account_id` (resolved, NOT null), `platform:'reddit'`, `action_type:'comment'`\|`'post'`, `target_url` (REAL permalink, full https URL), `target_kind:'post'`\|`'subreddit'`, `source_url` (NOT NULL), `title` (EXACT live thread title, verbatim), `content` (the draft), `evidence` (why-relevant), `metadata` { `subreddit` (no "r/"), `parent_fullname` (`'t3_'`+post-id \| `'t1_'`+comment-id), `subreddit_rules_summary`, `risk`, `compliance` }, `status:'draft'`, `created_by:null` } · `Prefer: return=minimal` |
+| Review payload carrier | `content` = draft · `evidence` = why-relevant · `metadata.subreddit_rules_summary` + `metadata.risk` + `target_url`/`title` (shown on `…/social-engagement/engagements`) |
 | Human approve (gate) | RPC `social_engagement_action_review` (member: approve\|reject) → flips `draft`→`approved` and sets `approved_by`; the agent NEVER sets these |
-| Publish (separate skill) | approve_first: GET `social_engagement_actions?status=eq.approved` → Composio post → PATCH `{ status:'published', external_id, permalink, published_at }` (agent UPDATE grant: `status,external_id,permalink,published_at,error,metrics,occurred_at`) |
+| Publish (separate skill) | approve_first: GET `social_engagement_actions?status=eq.approved` (incl. **human-authored** rows, `metadata.authored_by='human'`, `created_by` not null) → Composio post **as the resolved entity** (`REDDIT_POST_REDDIT_COMMENT` `thing_id`=`metadata.parent_fullname`; `REDDIT_CREATE_REDDIT_POST` `subreddit`=`metadata.subreddit`) → PATCH `{ status:'published', external_id, permalink, published_at }` (agent UPDATE grant: `status,external_id,permalink,published_at,error,metrics,occurred_at`) |
 | Telemetry / blocker | `openclaw_mission_events` { `workspace_id`, `mission_id`, `event_type:'progress'`\|`'blocker'`, `message:'<real counts>'`, `payload` } · `created_by` null |
 | Yield (optional) | `gtm_sources` { `workspace_id`, `platform:'reddit'`, `query`, `prospects_found`, `qualified` } |
 
@@ -117,13 +140,20 @@ reconstructs what worked from there and steers the new draft accordingly:
 - **Draft-row invariants.** Always `status='draft'`, `created_by=null`; **never** set `external_id` /
   `permalink` / `published_at` / `approved_by` (those belong to human approval + the agent's later
   publish). `metadata` is stamped at insert (can't be added later).
+- **No duplication, on-topic only (R1).** Every draft is unique + thread-specific; never reuse/clone/
+  template a body across threads (compare each candidate vs this run's drafts + recent readable rows). If
+  the persona can't genuinely help THIS thread → SKIP; never force a generic pitch onto an unrelated thread.
+- **Destination stamped at insert.** Every draft carries `target_url` (real permalink, full https URL),
+  `target_kind`, the EXACT `title`, `social_account_id`, and `metadata.{subreddit,parent_fullname}` — the
+  grant can't add them after insert.
 - **No covert promo.** No unprompted product mention or link (R3); the comment must hold up with any
   mention/link removed.
-- **SKIP when:** cap reached · thread already engaged · weak/uncertain relevance · subreddit rules
-  unclear/ambiguous · the agent cannot actually answer the question · standalone value is impossible
-  without a product mention · the only viable pattern is one a removal already killed · any
-  tool/page/login failure → emit a `blocker` event and move on (R0.7, R5). When in doubt, SKIP — a
-  missed comment is cheap, a ban is not.
+- **SKIP when:** cap reached · thread already engaged · weak/uncertain relevance · the persona can't
+  genuinely help THIS thread (off-topic) · the draft would duplicate/paraphrase another (this run or a
+  recent readable row) · subreddit rules unclear/ambiguous · the agent cannot actually answer the question
+  · standalone value is impossible without a product mention · the only viable pattern is one a removal
+  already killed · any tool/page/login failure → emit a `blocker` event and move on (R0.7, R5). When in
+  doubt, SKIP — a missed comment is cheap, a ban is not.
 
 ## Acceptance criteria
 - ≤ 3 draft rows created per day **total**; each is `status='draft'`, `created_by=null`, with a real
@@ -134,6 +164,11 @@ reconstructs what worked from there and steers the new draft accordingly:
   corporate/ChatGPT tone, no essay-with-conclusion; tailored to its thread.
 - Every draft carries the full review payload: subreddit-rules summary + why-relevant + risk + the
   draft.
+- **0 duplicate drafts** (no two drafts share the same/near-identical body); **every draft is on-topic for
+  its own thread** (the persona can genuinely help it) — off-topic or clone → SKIP/rewrite.
+- Every draft carries its **destination**: `target_url` (real permalink, full https URL), `target_kind`,
+  the EXACT `title`, `social_account_id`, and `metadata.{subreddit, parent_fullname, subreddit_rules_summary,
+  risk, compliance}` — all stamped at insert.
 - Drafts **bias toward** patterns that earned upvotes+replies and **never repeat** a pattern that was
   `removed` / heavily rejected (real-time learning), using only really-observed metrics.
 - No content is published before a human approves via `social_engagement_action_review`; the reviewer

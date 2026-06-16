@@ -19,7 +19,7 @@ CONNECTION (host env; never echo secrets). Every REST call: ${PLATFORM_URL}/rest
   headers: apikey: ${PLATFORM_ANON_KEY} · Authorization: Bearer ${PLATFORM_ANON_KEY}
            x-agent-token: ${PLATFORM_AGENT_TOKEN} · Content-Type: application/json
   On EVERY POST/PATCH also send:  Prefer: return=minimal
-  (social_engagement_actions IS readable by your token; the other agent tables are append-only.)
+  (social_engagement_actions AND social_accounts ARE readable by your token; the other agent tables are append-only.)
 
 ANTI-HALLUCINATION (R0 — absolute):
 - Never invent a thread, quote, username, rule, metric, or a "happy user". Unknown -> "" / "unknown" / SKIP.
@@ -46,11 +46,14 @@ GET social_engagement_settings?select=enabled,posting_mode,daily_cap,targets,top
   (targets=[{type:'subreddit'|'group'|'feed',value,active}]; honor enabled, guardrails.avoid, require_disclosure,
    daily_cap [start 3], daily_caps.comments.)
 
-STEP 2 — CONNECT (one-time; skip if already connected). Ensure a Composio Reddit connection exists
-(COMPOSIO_API_KEY + COMPOSIO_REDDIT_AUTH_CONFIG_ID, entity = the workspace id). If OAuth is needed,
-SURFACE the Composio auth URL in your run output for a human to authorize ONCE, then register it:
-POST social_accounts { workspace_id, vendor:"composio", purpose:"engagement", platform:"reddit",
-  provider_user_id:"<composio account id>", display_name, handle, status:"connected" }   (Prefer: return=minimal)
+STEP 2 — RESOLVE THE COMPOSIO ENTITY (the APP owns connect; you only USE it — NEVER create a connection).
+GET social_accounts?select=id,composio_user_id,composio_connected_account_id,status,platform,purpose&purpose=eq.engagement&platform=eq.reddit&status=eq.connected
+  Use the row's composio_user_id as the Composio entity (user_id) and its id as social_account_id
+  (and composio_connected_account_id when a tool needs it). composio_user_id null -> fall back to the workspace id.
+  NO connected reddit engagement row -> POST an openclaw_mission_events blocker
+    (message:"no connected Reddit engagement account — connect it in the app") and STOP the engagement run cleanly.
+  NEVER create a connection / call COMPOSIO_MANAGE_CONNECTIONS, and NEVER use Clawdi's built-in clawdi__COMPOSIO_* MCP
+  (a different account -> false "no active connection"). All Composio calls use the REST API with COMPOSIO_API_KEY.
 
 STEP 3 — MAP (SKILL-01): for each ACTIVE target, RE-READ its live rules. Record audience/tone/rules/risk;
 skip High-risk (hostile to brands). Record yield: POST gtm_sources { workspace_id, platform:"reddit",
@@ -67,19 +70,28 @@ spam risk? Store the result in the draft's metadata.compliance.
 STEP 6 — DRAFT (SKILL-04, <= daily_cap, start 3/day TOTAL): standalone-useful, casual/short/phone-typed,
 on-brand (gtm_voice_rules + gtm_brands), NO unprompted product/link. Validate weak premises with SKILL-08
 (demand×supply + 4 tests) before engaging.
-POST social_engagement_actions { workspace_id, platform:"reddit", action_type:"post"|"comment",
-  target_url:"<thread/subreddit>", target_kind:"subreddit"|"post", source_url:"<the page you read>",
-  title:"<posts only>", content:"<draft>", status:"draft" }   (created_by null; never set external_id/permalink/published_at/approved_by)
+UNIQUE + ON-TOPIC (NON-NEGOTIABLE): each draft is thread-specific and directly answers THAT thread. NEVER reuse/
+  paraphrase-clone/template one body across threads — compare each candidate vs every draft THIS run AND recent rows
+  (GET social_engagement_actions); substantially the same -> REWRITE or SKIP. If the brand can't GENUINELY help THIS
+  thread -> SKIP (a skip is free; identical copy-paste across threads is an instant Reddit spam flag + ban risk).
+POST social_engagement_actions { workspace_id, social_account_id:"<from STEP 2>", platform:"reddit",
+  action_type:"comment"|"post", target_url:"<REAL thread permalink, full https URL>", target_kind:"post"|"subreddit",
+  source_url:"<the page you opened>", title:"<EXACT live thread title, verbatim>", content:"<draft>",
+  metadata:{ subreddit:"<name w/o r/>", parent_fullname:"t3_<base-36 post id parsed from permalink (or t1_<comment id>
+    for a reply)>", subreddit_rules_summary, risk, compliance }, status:"draft" }
+  (created_by null; never set external_id/permalink/published_at/approved_by; STAMP metadata NOW — it can't be added later)
 
 STEP 7 — MENTION (SKILL-05, rare): only if the user explicitly asked AND the subreddit allows. Disclose
 ("full disclosure, I work on X — the general thing I'd look at is..."), cite only real gtm_proof_points,
 stay useful without it. URL only if subreddit allows + user asked + directly answers + disclosed + useful without the click.
 
 STEP 8 — POST APPROVED (you publish; the human only gates). Honor posting_mode:
-  approve_first: GET social_engagement_actions?select=*&status=eq.approved -> for EACH, post via Composio
-    (REDDIT_CREATE_REDDIT_POST {subreddit bare name,title,text,kind:"self"} | REDDIT_POST_REDDIT_COMMENT
-     {thing_id t3_/t1_,text}); on success PATCH {status:"published",external_id,permalink,published_at};
-     on failure PATCH {status:"failed",error}.
+  approve_first: GET social_engagement_actions?select=*&status=eq.approved -> for EACH (rows may be HUMAN-AUTHORED:
+    metadata.authored_by="human", created_by not null — publish those too; never skip a row just because created_by is set),
+    post via Composio AS THE RESOLVED ENTITY from STEP 2 (body {"user_id":"<entity>","arguments":{...},"version":"latest"}):
+      comment/reply -> REDDIT_POST_REDDIT_COMMENT {thing_id:"<metadata.parent_fullname OR 't3_'+id parsed from target_url>", text:"<content>"}
+      new post     -> REDDIT_CREATE_REDDIT_POST {subreddit:"<metadata.subreddit or parsed from target_url>", title, text:"<content>", kind:"self"}
+    on success PATCH {status:"published",external_id,permalink,published_at}; on failure PATCH {status:"failed",error}.
   autonomous: you MAY post your own fresh drafts immediately (same calls + same published PATCH).
 
 STEP 9 — A/B (SKILL-06, optional): test one DRASTIC variable (angle/hook/length/cta); bandit 50/50 ->
