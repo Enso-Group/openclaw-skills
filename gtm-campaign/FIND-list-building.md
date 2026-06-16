@@ -113,12 +113,19 @@ Verify **each** returned person on a **real page** before scoring (R0). Use eith
 if one is unavailable, run the other — **never stop for "no geography."**
 
 ### 3a. Apollo (`APOLLO_API_KEY`) — the default, runs now `[Contract]`
+- **Endpoint — use EXACTLY this** (the old `mixed_people/search` is DEPRECATED → HTTP 422):
+  `POST https://api.apollo.io/api/v1/mixed_people/api_search`, header `X-Api-Key: ${APOLLO_API_KEY}`
+  (the key MUST be in this header, never in the body) + `Content-Type: application/json`. Body:
+  `{ "person_titles":[...], "person_locations":[...](optional), "page":1, "per_page":25 }`.
+  Response: `total_entries` + `people[]`.
 - `person_titles` — **REQUIRED** (all title variants from the ICP Title field).
 - `person_locations` — **OPTIONAL** (use `target_geography` / persona geography if present, else
   **OMIT** — never stop for missing geography).
+- `api_search` returns **obfuscated** names + no direct email — treat the result as a candidate list:
+  **verify each person on their real LinkedIn page (R0)** to get the real profile URL (your `source_url`)
+  before scoring/staging; leave `email:""` (enriched later).
 - Company-size (stage→size) and pain-keyword targeting then apply as **Filter Pass 1 + scoring** on
-  the returned people (§4–§5). If your Apollo tool also exposes org-size / keyword params you MAY
-  pre-narrow with them, but **titles are the only required param** and geography is never a stopper.
+  the returned people (§4–§5); titles are the only required param and geography is never a stopper.
 
 ### 3b. Apify LinkedIn scrape (`APIFY_TOKEN`) — needs a LinkedIn cookie + actor `[Build list]`+`[Contract]`
 - **Missing the cookie or actor → POST a FIND blocker and continue** with Apollo.

@@ -46,8 +46,9 @@ message:"<step>: decision + counts", payload:{stage:"engagement"} }` (mission_id
   `COMPOSIO_REDDIT_AUTH_CONFIG_ID`, entity = workspace id). If OAuth is needed, surface the auth URL in
   your output for a human to authorize ONCE, then POST a `social_accounts` row (`purpose='engagement'`,
   `platform='reddit'`, `status='connected'`).
-- **STEP 3 — Map** (depth: `SKILL-01`): for each ACTIVE subreddit re-read its live rules; skip High-risk;
-  POST a `gtm_sources` yield row.
+- **STEP 3 — Map** (depth: `SKILL-01`): for each ACTIVE subreddit re-read its live rules; skip High-risk.
+  You may now **write `targets`** — PATCH `social_engagement_settings.targets` to add Low/Med-risk subreddits
+  you mapped or deactivate removed ones (column-scoped; humans edit it too; live). POST a `gtm_sources` yield row.
 - **STEP 4 — Observe/classify** (depth: `SKILL-02`): during the observation window draft nothing; emit
   classifications as `progress` events.
 - **STEP 5 — Compliance** (depth: `SKILL-03`): the 8-question gate; any doubt → SKIP; store result in the

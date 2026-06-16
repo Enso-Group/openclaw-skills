@@ -44,8 +44,9 @@ estimated.
    (SKILL-04 / `gtm_voice_rules`).
 2. **Removal rule (hard).** A **removed** comment → immediately flag that subreddit **High risk** and
    **halt all activity there** until its rules are re-evaluated (re-run SKILL-01) or a human gives new
-   guidance. Concretely: PATCH `metrics.removed=true` on the action; deactivate the target
-   (`social_engagement_settings.targets[].active=false` — see flag); `POST gtm_insights` (observed:
+   guidance. Concretely: PATCH `metrics.removed=true` on the action; deactivate the target **yourself** —
+   PATCH `social_engagement_settings.targets` setting that subreddit's `active=false` (you now have
+   column-scoped `targets` write); `POST gtm_insights` (observed:
    removal; change_made: halt this subreddit). **Never keep posting into a subreddit that removed you.**
 3. **Decide continue / reduce / stop per subreddit** from step 1. Keep engaging where the expert is
    welcomed; reduce or stop where it isn't.
@@ -95,10 +96,10 @@ estimated.
 | Per-action metrics | `social_engagement_actions.metrics` (jsonb keys above) — readable + `PATCH ` (`return=minimal`) by the agent token |
 | Which rows to score | `GET social_engagement_actions?status=eq.published` (own rows), per target = per subreddit/thread |
 | Subreddit reception / yield | `POST gtm_sources { workspace_id, platform:'reddit', query, prospects_found, qualified }` (append-only/blind — append a fresh yield row; you cannot UPDATE it) |
-| "Halt this subreddit" | **recommend** a human set `social_engagement_settings.targets[].active=false` (the agent can't write settings) + append a `gtm_insights` halt row + hold High-risk in Clawdi memory — **not** an UPDATE to `gtm_sources` |
+| "Halt this subreddit" | the agent itself PATCHes `social_engagement_settings.targets` → that subreddit `active=false` (column-scoped `targets` write) + appends a `gtm_insights` halt row + holds High-risk in Clawdi memory — **not** an UPDATE to `gtm_sources` |
 | Scaling volume (3→5→8) | `social_engagement_settings.daily_cap` — read every run at STEP 1; honored, ceiling 8, never exceeded |
 | Lessons / weekly review / scale rec | `POST gtm_insights { workspace_id, use_case_id?, title, observed, evidence, hypothesis, change_made, status:'active' }` (append-only; no UPDATE → supersede by appending) |
-| New-subreddit expansion gate | re-run **SKILL-01** (live rules + tone) → **recommend** it; a human adds it to `social_engagement_settings.targets` (agent can't self-write settings) |
+| New-subreddit expansion gate | re-run **SKILL-01** (live rules + tone) → the agent adds the new (Low/Med-risk) subreddit to `social_engagement_settings.targets` itself (humans can too); High-risk stays inactive |
 | Review telemetry | `POST openclaw_mission_events { event_type:'progress'\|'note', payload:{stage:'engagement'} }` |
 | Global STOP / proof-gated autonomy (recommend, human sets) | `gtm_pipeline_settings` (`paused`, `autonomous`) · `social_engagement_settings.posting_mode` |
 
