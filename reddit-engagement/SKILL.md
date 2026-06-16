@@ -42,10 +42,12 @@ message:"<step>: decision + counts", payload:{stage:"engagement"} }` (mission_id
 - **STEP 1 — Read strategy:** GET `gtm_brands`, `gtm_voice_rules`, `gtm_proof_points`,
   `social_engagement_settings?select=enabled,posting_mode,daily_cap,targets,topics,guardrails`
   (targets = subreddits; honor `guardrails.avoid` + `require_disclosure` + `daily_cap` [start 3]).
-- **STEP 2 — Connect (one-time):** ensure a Composio Reddit connection (`COMPOSIO_API_KEY` +
-  `COMPOSIO_REDDIT_AUTH_CONFIG_ID`, entity = workspace id). If OAuth is needed, surface the auth URL in
-  your output for a human to authorize ONCE, then POST a `social_accounts` row (`purpose='engagement'`,
-  `platform='reddit'`, `status='connected'`).
+- **STEP 2 — Connect (the APP owns this — you only USE it):** the Reddit/LinkedIn accounts are connected in the
+  Lovable app under entity = workspace id with the same `COMPOSIO_API_KEY`. Execute Composio tools via the REST API
+  DIRECTLY — `POST https://backend.composio.dev/api/v3/tools/execute/<SLUG>`, header `x-api-key: ${COMPOSIO_API_KEY}`,
+  body `{"user_id":"<workspace_id>",...}`. **NEVER create a connection / call `COMPOSIO_MANAGE_CONNECTIONS`, and do NOT
+  use Clawdi's built-in `clawdi__COMPOSIO_*` MCP** (different account → false "no active connection"). If a tool returns
+  "no active connection" for the workspace entity, POST a blocker (the human re-connects in the app).
 - **STEP 3 — Map** (depth: `SKILL-01`): for each ACTIVE subreddit fetch its live rules via Composio
   **`REDDIT_GET_SUBREDDIT_RULES`** (entity/`user_id` = workspace id); skip High-risk. (Browser + direct HTTP are
   unreliable for Reddit — browser 404s, reddit.com 403-blocks datacenter IPs — so Composio is the read path.)

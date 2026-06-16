@@ -14,7 +14,26 @@ Enforce a mandatory observation period and a continuous read pass: passively mon
 - Monitoring always runs first each loop as the read pass that feeds SKILL-03, bounded by the daily cap.
 
 ## Connection (every REST call)
-`${PLATFORM_URL}/rest/v1/<table>` · headers `apikey`+`Authorization: Bearer ${PLATFORM_ANON_KEY}` · `x-agent-token: ${PLATFORM_AGENT_TOKEN}` · `Content-Type: application/json`. **Reddit READS use the Composio Reddit toolkit — PRIMARY** (authenticated via `COMPOSIO_API_KEY` + `COMPOSIO_REDDIT_AUTH_CONFIG_ID`, `user_id`/entity = the workspace id — reliable, no IP blocks): `REDDIT_GET_SUBREDDIT_RULES` (`subreddit` w/o `r/`) for rules · `REDDIT_SEARCH_ACROSS_SUBREDDITS` (`search_query` e.g. `subreddit:fintech <pain keywords>`, `sort:"new"`, `restrict_sr:true`, `limit`) or `REDDIT_GET_R_TOP` (`subreddit`, `t:"day"/"week"`) to find recent threads · `REDDIT_RETRIEVE_REDDIT_POST` + `REDDIT_RETRIEVE_POST_COMMENTS` (`article`=base-36 post id) for detail. The result `permalink` (a real `https://www.reddit.com/...` URL) is your `source_url`. **Do NOT rely on the OpenClaw browser or direct HTTP for Reddit — the browser may return HTTP 404 and reddit.com 403-blocks datacenter IPs; use them only if Composio Reddit is unavailable.** If a Composio Reddit call returns "no active connection", POST a blocker naming it (the human re-connects Reddit in the app) and skip. Composio Reddit also POSTs the approved comment. Every PLATFORM POST adds `Prefer: return=minimal`.
+`${PLATFORM_URL}/rest/v1/<table>` · headers `apikey`+`Authorization: Bearer ${PLATFORM_ANON_KEY}` · `x-agent-token: ${PLATFORM_AGENT_TOKEN}` · `Content-Type: application/json`.
+
+**Reddit READS go through the Composio REST API DIRECTLY** (NOT the browser, NOT Clawdi's built-in Composio MCP):
+`POST https://backend.composio.dev/api/v3/tools/execute/<SLUG>` with header `x-api-key: ${COMPOSIO_API_KEY}` and body
+`{"user_id":"<workspace_id>","arguments":{...},"version":"latest"}`.
+- **CRITICAL — `user_id` MUST be the workspace id.** The Reddit (and LinkedIn) account is connected **in the app
+  (Lovable)** under entity = workspace id, using THIS SAME `COMPOSIO_API_KEY`. Calling with that key + that `user_id`
+  reuses the app's connection — that is how Clawdi and Lovable stay synced through Composio.
+- **Do NOT use Clawdi's built-in Composio MCP tools (`clawdi__COMPOSIO_*`)** — that is a DIFFERENT Composio
+  account/entity and will falsely report "no active connection". **NEVER call `COMPOSIO_MANAGE_CONNECTIONS` / create a
+  new connection** — the human owns connect/disconnect in the app; you only USE the connection.
+- Slugs: `REDDIT_GET_SUBREDDIT_RULES` (`subreddit` w/o `r/`) for rules · `REDDIT_SEARCH_ACROSS_SUBREDDITS`
+  (`search_query` e.g. `subreddit:fintech <pain keywords>`, `sort:"new"`, `restrict_sr:true`, `limit`) or
+  `REDDIT_GET_R_TOP` (`subreddit`, `t:"day"/"week"`) for recent threads · `REDDIT_RETRIEVE_REDDIT_POST` +
+  `REDDIT_RETRIEVE_POST_COMMENTS` (`article`=base-36 id) for detail. The result `permalink` is your `source_url`.
+- The OpenClaw browser + direct HTTP are unreliable for Reddit (browser 404s; reddit.com 403-blocks datacenter IPs) —
+  last resort only. If executing a slug with `user_id=<workspace_id>` returns a genuine "no active connection", POST a
+  blocker (the human re-connects Reddit in the app) and skip — do NOT create one yourself.
+
+Composio also POSTs the approved comment via the same REST execute path. Every PLATFORM POST adds `Prefer: return=minimal`.
 
 ## Workflow (deterministic)
 1. **Honor STOP (R4).** GET `gtm_pipeline_settings?select=autonomous,paused,stages`; stop cleanly if empty / `paused=true` / `autonomous=false` / `stages.engagement=false`. Read `social_engagement_settings.posting_mode`: `approve_first` → **drafting is ON this run** (the human gates each post); `autonomous` → first run per newly-added subreddit is monitor-only, then draft.
