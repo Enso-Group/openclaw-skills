@@ -82,8 +82,8 @@ estimated.
 
 ## Real-time learning loop (every run)
 1. **Read** recent own `social_engagement_actions` + `.metrics` (removals/negatives) — the readable measure
-   surface — and **recall** prior blockers via **Clawdi memory** (`memory_search`). `openclaw_mission_events`
-   is write-blind (never GET it).
+   surface — and **recall** prior blockers by GETting your own recent `openclaw_mission_events`
+   (token-scoped readable via the readback grant `20260616170000`; Clawdi memory is an optional extra).
 2. **Learn → act this run:** halt subreddits that removed you; reduce where downvotes/negative replies
    appeared; lean into subreddits/angles/topics that earned replies/upvotes. Adjust `daily_cap` **only**
    per the locked ladder, never on a single good day.
@@ -96,7 +96,7 @@ estimated.
 | Per-action metrics | `social_engagement_actions.metrics` (jsonb keys above) — readable + `PATCH ` (`return=minimal`) by the agent token |
 | Which rows to score | `GET social_engagement_actions?status=eq.published` (own rows), per target = per subreddit/thread |
 | Subreddit reception / yield | `POST gtm_sources { workspace_id, platform:'reddit', query, prospects_found, qualified }` (append-only/blind — append a fresh yield row; you cannot UPDATE it) |
-| "Halt this subreddit" | the agent itself PATCHes `social_engagement_settings.targets` → that subreddit `active=false` (column-scoped `targets` write) + appends a `gtm_insights` halt row + holds High-risk in Clawdi memory — **not** an UPDATE to `gtm_sources` |
+| "Halt this subreddit" | the agent itself PATCHes `social_engagement_settings.targets` → that subreddit `active=false` (column-scoped `targets` write) + appends a `gtm_insights` halt row + holds High-risk in run context (and can re-read its own readable rows) — **not** an UPDATE to `gtm_sources` |
 | Scaling volume (3→5→8) | `social_engagement_settings.daily_cap` — read every run at STEP 1; honored, ceiling 8, never exceeded |
 | Lessons / weekly review / scale rec | `POST gtm_insights { workspace_id, use_case_id?, title, observed, evidence, hypothesis, change_made, status:'active' }` (append-only; no UPDATE → supersede by appending) |
 | New-subreddit expansion gate | re-run **SKILL-01** (live rules + tone) → the agent adds the new (Low/Med-risk) subreddit to `social_engagement_settings.targets` itself (humans can too); High-risk stays inactive |

@@ -37,7 +37,7 @@ While drafting (SKILL-04) for an already-eligible thread, EITHER: the user **exp
 
 ## Real-time learning (let prior reception gate the next mention)
 Mentions are the most ban-prone action, so weight them by what actually happened (read your own
-published rows; `gtm_ab_*` are write-blind — reconstruct from `social_engagement_actions`):
+published rows; `gtm_ab_*` are token-scoped readable too, but reconstruct the live tally from `social_engagement_actions`):
 - **A disclosed mention/link that was `removed` or drew `negative_replies`/heavy `downvotes` in a
   subreddit → stop mentioning there.** Default that subreddit to educational-only until SKILL-01 +
   SKILL-10 re-clear it. A removal is a hard stop even at n=1 (R4 — never scale on a negative).

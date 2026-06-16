@@ -277,19 +277,20 @@ POST /rest/v1/sdr_messages
 - **Reply rate by angle/variant → what to write next.** Track replies ÷ sends per
   `angle` / `variant_id` (and per **sender** — sender is a *measured* variable, not one you change).
   Lean toward the leading angle/tease/CTA for that use-case; when one stalls, climb the angle ladder.
-  The A/B tables are **write-blind**, so **keep your own running tally** (re-post counts in your
-  decision-log events) — never trust a winner on `< 20` sends (small-sample noise).
+  The A/B tables are token-scoped readable, but rebuild the live tally from your own sends/replies (re-post
+  counts in your decision-log events) — never trust a winner on `< 20` sends (small-sample noise).
 - **Copy has a shelf life `[First-message skill]`.** When a winner's reply rate decays, decide *did
   the world change* (new angle — re-read `gtm_geo_questions` + the ICP's recent posts) *or did the
   copy go stale* (same angle/thesis/article, fresh trigger + tease). A fresh sender can reset a
   decayed relationship.
 - **Blockers → don't repeat them.** If `UNIPILE_DSN` was missing last fire, the invite/DM stays
   blocked — keep advancing warmup touches 1–9 (Composio) and re-attempt sending only once Unipile is
-  configured. Use **Clawdi memory** (`memory_search`) to avoid re-failing the same way (`openclaw_mission_events`
-  is write-blind — never GET it).
-- **Warmup pacing.** `gtm_warmup_actions` is **write-blind** (no agent SELECT) — track each lead's next due
-  `action_no` + cap headroom in **Clawdi memory** (`memory_add` after each touch, `memory_search` at run
-  start); if a cap is hit, defer the touch to the next eligible (weekday) fire rather than exceeding it.
+  configured. GET your own recent `openclaw_mission_events` (token-scoped readable via the readback grant
+  `20260616170000`) to avoid re-failing the same way (Clawdi memory is an optional extra).
+- **Warmup pacing.** `gtm_warmup_actions` is token-scoped readable (readback grant `20260616170000`) — GET
+  your own rows to compute each lead's next due `action_no` + cap headroom (no reliance on Clawdi memory,
+  which is OFF without an embedding key); if a cap is hit, defer the touch to the next eligible (weekday)
+  fire rather than exceeding it.
 
 ---
 

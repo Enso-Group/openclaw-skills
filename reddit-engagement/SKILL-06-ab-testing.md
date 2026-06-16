@@ -19,8 +19,8 @@ the cap on a known loser.
 - A new variant dimension is worth testing (a drastically different **angle**, **hook**, **length**,
   or **CTA**) for a subreddit cluster / topic — open a `gtm_ab_tests` row.
 - Every drafting run (Skill: draft): from the **run-state** allocation (rebuilt from readable
-  `social_engagement_actions` — the `gtm_ab_*` tables aren't agent-readable), pick the next variant to
-  draft accordingly.
+  `social_engagement_actions`, which carries the per-send attribution; `gtm_ab_*` are token-scoped
+  readable too via the readback grant), pick the next variant to draft accordingly.
 - Every checkpoint / weekly review: re-evaluate allocation, shift toward the leader, or lock a winner.
 - Never triggered by a desire for "more data fast" — volume stays inside the daily cap.
 
@@ -86,7 +86,7 @@ the cap on a known loser.
     may recover. `status='leading'`.
 13. **Phase 3 — Continuous re-evaluation (~every 20 sends / each checkpoint).** Recompute each
     variant's rate from the **readable** `social_engagement_actions` (`metadata.variant_id` +
-    `metrics`) — the `gtm_ab_*` tables aren't agent-readable — and update the run-state tally. If the
+    `metrics`; `gtm_ab_*` are also readable, but the action rows are the per-send source of truth) and update the run-state tally. If the
     leader keeps winning, step the allocation up (→80/20→90/10); if the loser closes the gap, **shift
     back toward 50/50.** Persist new `allocation_pct` blind. This protects the scarce daily-3 cap: you
     never spend half the pool proving the loser is a loser.
@@ -121,20 +121,21 @@ the cap on a known loser.
 live bandit math runs **in the agent**. Attribution is stamped on the real comment in
 `social_engagement_actions`.
 
-**Write model — blind (why the tally lives in run-state).** The agent's grant on both tables is
-**INSERT + column-scoped UPDATE only — no SELECT** (members/app read them; the agent cannot read them
-back). So:
+**Write model (why the tally still lives in run-state).** The agent's grant on both tables is
+**INSERT + column-scoped UPDATE**, plus token-scoped **SELECT** via the readback grant `20260616170000`.
+Even so, the live per-send tally is rebuilt from `social_engagement_actions` (it carries per-send
+attribution the `gtm_ab_*` summary counters don't). So:
 - **Client-side UUIDs.** The agent generates `gtm_ab_tests.id` and each `gtm_ab_variants.id` itself at
   INSERT — needed to link variants (`test_id = <test uuid>`), to stamp the draft's
   `social_engagement_actions.metadata.{test_id,variant_id,variant_label}` at draft INSERT, and to
-  address rows for later UPDATE (none possible by reading back).
+  address rows for later UPDATE (set the ids at INSERT so a draft can be stamped in the same pass).
 - **Immutable-at-INSERT fields:** `layer`, `variable`, `use_case_id`, `workspace_id` aren't in the
   UPDATE grant — set them once, at creation; `created_by` is null. All writes use `Prefer:
   return=minimal`.
 - **Run-state is authoritative.** Keep the live tally (sends/replies/allocation per variant) in
   run-state, reconstructable any run from the readable `social_engagement_actions` (group published
-  rows by `metadata.variant_id`; replies/upvotes from `metrics`). Persist it blind via UPDATE, but
-  never depend on reading it back.
+  rows by `metadata.variant_id`; replies/upvotes from `metrics`). Persist it via column-scoped UPDATE;
+  you may read the `gtm_ab_*` summary back, but the action rows remain the per-send source of truth.
 - **Agent-updatable columns:** `gtm_ab_tests` → `status, winner_variant_id, total_sends, hypothesis,
   name, metadata`; `gtm_ab_variants` → `content, allocation_pct, sends, replies, is_winner, metadata`.
 
@@ -148,7 +149,7 @@ back). So:
 | Running totals | `gtm_ab_tests.total_sends`, `winner_variant_id` | total = Σ variant sends |
 | A variant | `gtm_ab_variants` (one row each) | unique (`test_id`,`label`) |
 | Variant value | `gtm_ab_variants.label` (e.g. `pain`/`contrarian`/`outcome`) + `.content` (the opening/template) | label is free text (not the SDR angle CHECK) |
-| Bandit allocation | `gtm_ab_variants.allocation_pct` (50→70→80→90) | the drafter picks the next variant from the **run-state** allocation (the `gtm_ab_*` tables aren't agent-readable); persisted blind |
+| Bandit allocation | `gtm_ab_variants.allocation_pct` (50→70→80→90) | the drafter picks the next variant from the **run-state** allocation (rebuilt from `social_engagement_actions`; `gtm_ab_*` are token-scoped readable too); persisted via column-scoped UPDATE |
 | **"sends"** = comments posted with this variant | `gtm_ab_variants.sends` | set from the run-state count (each `social_engagement_actions` row with this variant that reaches `status='published'`); written blind |
 | **success** = replies (and upvotes) | `gtm_ab_variants.replies` (canonical) + upvote/score snapshot in `social_engagement_actions.metrics` | schema has `replies` only; upvotes ride in `metrics`/variant `metadata` |
 | Winner | `gtm_ab_variants.is_winner` | set only at lock (§14) |
@@ -161,10 +162,10 @@ back). So:
   "great result." No filler variant rows.
 - **No peeking / no p-hacking.** `is_winner` and `status='locked'` are set **only** by the lock rule
   (§14). Until then the test stays `exploring`/`leading`.
-- **Blind writes, honest ids.** The agent never reads `gtm_ab_*` back: it generates the test/variant
-  UUIDs client-side, links and stamps drafts with them, and treats the **run-state tally** (rebuilt
-  from readable `social_engagement_actions`) as authoritative. Never guess an id or back-fill a tally
-  from memory.
+- **Run-state-authoritative ids.** The agent generates the test/variant UUIDs client-side (so it can
+  link them and stamp drafts in the same INSERT pass), and treats the **run-state tally** (rebuilt
+  from readable `social_engagement_actions`) as authoritative — the `gtm_ab_*` counters are a persisted
+  summary it may also read back. Never guess an id or back-fill a tally from memory.
 - **Respect the cap.** The bandit allocates *within* the 3/day limit (R4); never inflate volume to
   finish a test faster.
 - **Never scale on a negative.** A removed comment, heavy downvotes, or hostile replies are negative

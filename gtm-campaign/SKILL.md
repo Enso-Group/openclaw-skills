@@ -24,7 +24,10 @@ secret is missing, that sub-stage posts a blocker and you continue — the rest 
 ## Connection
 `${PLATFORM_URL}/rest/v1/...` headers `apikey`/`Authorization: Bearer ${PLATFORM_ANON_KEY}`,
 `x-agent-token: ${PLATFORM_AGENT_TOKEN}`, `Content-Type: application/json`. Every POST/PATCH: `Prefer: return=minimal`.
-Append tables have NO anon SELECT (write blind; keep your own tally). `social_engagement_actions` IS readable.
+Your append tables are now token-scoped READABLE (readback grant `20260616170000`): `openclaw_results_staging`,
+`openclaw_mission_events`, `gtm_sources`, `gtm_warmup_actions`, `gtm_ab_tests`, `gtm_ab_variants`, `gtm_insights`
+(plus `social_engagement_actions`). Still send `Prefer: return=minimal` on writes — a 42501 on such a GET means
+the readback grant isn't applied here yet → fall back to your own run tally.
 
 ## R0 — Anti-hallucination (absolute)
 Never invent a name/email/handle/title/company/URL/thread/reply/metric (unknown → `""`/`"unknown"`/SKIP). Every
@@ -76,7 +79,7 @@ GET `gtm_use_cases` (the ACTIVE use-cases = your queues, one per ICP) · `gtm_pe
   Unipile; POST `sdr_threads` + `sdr_messages` (client-generated uuids). The APP sends follow-ups + ingests replies.
   Depth: `gtm-campaign/WARMUP-and-first-message.md` (Part B).
 - **A/B TEST** (`test`): one drastic variable per (use-case, layer); bandit 50/50→70/30→80/20; lock at ≥25 each +
-  leader +25% + 3 checkpoints. `gtm_ab_tests`/`gtm_ab_variants` (write-blind — keep the tally yourself).
+  leader +25% + 3 checkpoints. `gtm_ab_tests`/`gtm_ab_variants` (token-scoped readable; still rebuild the live tally from your finds + generate client-side ids at INSERT).
   Depth: `reddit/SKILL-06-ab-testing.md`.
 - **ENGAGEMENT** (`engagement`): Reddit-first, transparent disclosed expert. Follow the **`reddit-engagement` skill**
   end-to-end (map → observe → compliance → draft → human approves → you post via Composio → track). Depth: the whole

@@ -45,9 +45,9 @@ The identity is **evidence-steered**, not static. Before acting, the agent reads
 feedback — `social_engagement_actions` (own workspace: `metrics`, `status`, `metadata.sentiment`) — and
 tightens scope/voice on any negative signal (a removed or downvoted comment, a negative reply, a
 rejected draft). A subreddit that removed or rejected the disclosed expert is treated **High-risk** and
-dropped until re-mapped (SKILL-01). It never infers reception it did not actually read (R0);
-`openclaw_mission_events` / `gtm_insights` are **write-blind** (no agent SELECT), so the readable signal
-is `social_engagement_actions` + the live page.
+dropped until re-mapped (SKILL-01). It never infers reception it did not actually read (R0); the primary
+readable signal is `social_engagement_actions` + the live page (`openclaw_mission_events` / `gtm_insights`
+are also token-scoped readable via the readback grant `20260616170000`, if you need cross-run recall).
 
 ## If you ever choose the covert path (not recommended)
 Only this file + R2/R3 disclosure rules change (fabricated persona, no disclosure). Everything else

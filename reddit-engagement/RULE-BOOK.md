@@ -55,10 +55,13 @@ not add genuine value to *this* thread, the agent does not take it.
   `social_engagement_settings.daily_cap` and the hard ceiling `gtm_pipeline_settings.daily_caps.comments`
   (10). Scale only on a sustained positive pattern (SKILL-10). **Never scale on any negative indicator**
   (a removal, downvotes, negative replies, unclear rules).
-- **Settings are read-only to the agent.** It reads `social_engagement_settings` /
-  `gtm_pipeline_settings` but **cannot write them** (humans set them via the settings RPC). So cap,
-  target, and `posting_mode` changes are **recommended** (insight + a SKILL-09 "decide" blocker), never
-  self-applied.
+- **Settings are mostly read-only to the agent — with ONE exception.** It reads
+  `social_engagement_settings` / `gtm_pipeline_settings`, and may write ONLY
+  `social_engagement_settings.targets` (column-scoped UPDATE, migration `20260616140000`) to
+  add/activate/deactivate subreddits. `posting_mode`, `daily_cap`, `guardrails`, `topics`, and all of
+  `gtm_pipeline_settings` stay human-set (the settings RPC). So cap and `posting_mode` changes are
+  **recommended** (insight + a SKILL-09 "decide" blocker), never self-applied; only `targets` the agent
+  sets itself.
 - **Obey STOP:** every run first GETs `gtm_pipeline_settings?select=autonomous,paused,stages,daily_caps`;
   if the row is **empty**, `paused=true`, `autonomous=false`, or `stages.engagement=false` → do nothing
   and stop cleanly.
@@ -68,10 +71,12 @@ not add genuine value to *this* thread, the agent does not take it.
 move on. A missed opportunity is cheap; a ban is not.
 
 ## R6 — Learn from real feedback (real-time, every run)
-- **Read your own readable history before acting and adapt.** The agent's durable readable memory is
+- **Read your own readable history before acting and adapt.** The agent's primary readable memory is
   `social_engagement_actions` (own-workspace anon SELECT: `status`, `metrics`, `metadata`, `source_url`)
-  plus the live page. **Write-blind tables** (`openclaw_mission_events`, `gtm_insights`, `gtm_sources`)
-  have **no agent SELECT** — never GET them; this run's own blockers live in your working context.
+  plus the live page. Your other append tables — `openclaw_mission_events`, `gtm_insights`, `gtm_sources`
+  (and `gtm_ab_tests`/`gtm_ab_variants`) — are ALSO token-scoped readable (readback grant
+  `20260616170000`): GET them to recall prior blockers/yield. (A 42501 on such a GET = the grant isn't
+  applied in this project yet → fall back to your working context.)
 - **React to negatives.** A **removal** (`metrics.removed`) or strong negative (downvotes, negative
   replies, a `status='rejected'`/`'failed'` row) in a subreddit → treat it as **High-risk**, stop
   drafting there, and recommend `targets[].active=false`. A **repeated blocker** (same tool/step failing)

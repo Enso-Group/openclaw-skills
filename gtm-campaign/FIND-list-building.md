@@ -41,8 +41,9 @@ contract (real tables/tools only — no invented columns). Read this when FIND n
 
 Connection for every call: `${PLATFORM_URL}/rest/v1/...` with headers `apikey` /
 `Authorization: Bearer ${PLATFORM_ANON_KEY}`, `x-agent-token: ${PLATFORM_AGENT_TOKEN}`,
-`Content-Type: application/json`. **Every POST/PATCH also sends `Prefer: return=minimal`** (the
-append tables have no anon SELECT; a 42501 *with* this header = a real permission blocker).
+`Content-Type: application/json`. **Every POST/PATCH also sends `Prefer: return=minimal`** (so the write
+doesn't try to echo the row; your append tables are otherwise token-scoped READABLE — see §6a — so a 42501
+*with* this header = a real permission blocker, not a read-back artifact).
 
 ---
 

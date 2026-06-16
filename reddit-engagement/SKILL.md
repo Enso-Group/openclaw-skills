@@ -21,7 +21,9 @@ the hard boundaries are in `RULE-BOOK.md`, the voice in `IDENTITY.md`.
 Every REST call: `${PLATFORM_URL}/rest/v1/...` with headers `apikey: ${PLATFORM_ANON_KEY}` ·
 `Authorization: Bearer ${PLATFORM_ANON_KEY}` · `x-agent-token: ${PLATFORM_AGENT_TOKEN}` ·
 `Content-Type: application/json`. On EVERY POST/PATCH also send `Prefer: return=minimal`.
-(`social_engagement_actions` and `social_accounts` are readable by your token; the other agent tables are append-only.)
+(`social_engagement_actions` and `social_accounts` are readable by your token; your other append tables —
+`openclaw_mission_events`, `gtm_sources`, `gtm_ab_tests`, `gtm_ab_variants`, `gtm_insights` — are ALSO
+token-scoped readable via the readback grant. Still send `Prefer: return=minimal` on every write.)
 
 ## R0 — Anti-hallucination (absolute)
 Never invent a thread/quote/username/rule/metric/"happy user" (unknown → `""`/`"unknown"`/SKIP). Every
@@ -87,7 +89,8 @@ message:"<step>: decision + counts", payload:{stage:"engagement"} }` (mission_id
   kind:"self"}` → PATCH `{status:"published",external_id,permalink,published_at}` (or `{status:"failed",error}`).
   `autonomous` → may post own drafts immediately.
 - **STEP 9 — A/B** (depth: `SKILL-06`, optional): one drastic variable; bandit 50/50→70/30→80/20; lock at
-  ≥25 each + leader +25% + 3 checkpoints. `gtm_ab_tests`/`gtm_ab_variants` (write-blind: keep the tally yourself).
+  ≥25 each + leader +25% + 3 checkpoints. `gtm_ab_tests`/`gtm_ab_variants` (token-scoped readable; still
+  rebuild the live tally from `social_engagement_actions`, and generate client-side ids at INSERT).
 - **STEP 10 — Track + scale** (depth: `SKILL-10`, `SKILL-07`): update `metrics`; a REMOVED comment → mark
   that subreddit High + halt there; scale `daily_cap` 3→5→8 only after 2+ weeks positive, never on negatives;
   pattern holds 2+ periods → POST `gtm_insights`.

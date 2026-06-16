@@ -32,7 +32,7 @@ A mandatory, automated safeguard that runs **before any comment is drafted.** It
 ## Why compliance is stamped at INSERT
 The agent's `social_engagement_actions` UPDATE grant covers only `status, external_id, permalink, published_at, error, metrics, occurred_at` — **not `metadata`.** So `metadata.compliance` **cannot be backfilled** after the row exists; it must be written in the same INSERT as the draft. No draft is ever created without its passing checklist (Skill 4 Q&A — proof of compliance for the reviewer).
 
-## System mapping (R = readable · W = write-blind unless noted)
+## System mapping (R = readable · W = agent appends/updates — these W tables are now ALSO token-scoped readable via the readback grant `20260616170000`)
 | Operation | Table / field | Access |
 |---|---|---|
 | STOP / autonomy gate + caps | `gtm_pipeline_settings` (`autonomous`,`paused`,`stages.engagement`,`daily_caps`) | R |
@@ -41,7 +41,7 @@ The agent's `social_engagement_actions` UPDATE grant covers only `status, extern
 | Disclosure / educational / claim judgement | `gtm_voice_rules`, `gtm_proof_points` (`is_citable=true`), `gtm_competitors` | R |
 | Idempotency + daily cap + learning (R6) | `social_engagement_actions` (`source_url`,`status`,`metrics`, today's count) | R |
 | Draft + stored checklist (PASS) | `social_engagement_actions` INSERT (`status='draft'`, `source_url`, `content`, `metadata.compliance`) | W (INSERT + SELECT; no `metadata` UPDATE) |
-| Skip / blocker telemetry | `openclaw_mission_events` (`progress` skip · `blocker`) | W (INSERT, no SELECT) |
+| Skip / blocker telemetry | `openclaw_mission_events` (`progress` skip · `blocker`) | W (INSERT) + R (readback) |
 
 ## Anti-hallucination & guardrails
 - **No draft without a stored, passing `metadata.compliance`** stamped at INSERT. The checklist runs *before* drafting, every time.

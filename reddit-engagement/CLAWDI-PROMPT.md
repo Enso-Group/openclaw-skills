@@ -19,7 +19,9 @@ CONNECTION (host env; never echo secrets). Every REST call: ${PLATFORM_URL}/rest
   headers: apikey: ${PLATFORM_ANON_KEY} · Authorization: Bearer ${PLATFORM_ANON_KEY}
            x-agent-token: ${PLATFORM_AGENT_TOKEN} · Content-Type: application/json
   On EVERY POST/PATCH also send:  Prefer: return=minimal
-  (social_engagement_actions AND social_accounts ARE readable by your token; the other agent tables are append-only.)
+  (social_engagement_actions AND social_accounts ARE readable by your token; your other append tables —
+   openclaw_mission_events, gtm_sources, gtm_ab_tests, gtm_ab_variants, gtm_insights — are ALSO token-scoped
+   readable via the readback grant. Still send Prefer: return=minimal on every write.)
 
 ANTI-HALLUCINATION (R0 — absolute):
 - Never invent a thread, quote, username, rule, metric, or a "happy user". Unknown -> "" / "unknown" / SKIP.
@@ -59,9 +61,11 @@ STEP 3 — MAP (SKILL-01): for each ACTIVE target, RE-READ its live rules. Recor
 skip High-risk (hostile to brands). Record yield: POST gtm_sources { workspace_id, platform:"reddit",
   query:"<subreddit/topic>", prospects_found, qualified }.
 
-STEP 4 — OBSERVE/CLASSIFY (SKILL-02): during the observation window (first runs / ~first 3 days, or while
-posting_mode requires it) DRAFT NOTHING — classify relevant threads (intent, can-we-help, risk, angle,
-links-allowed) and emit them as openclaw_mission_events progress. After the window, continue to STEP 5.
+STEP 4 — OBSERVE/CLASSIFY (SKILL-02): find recent threads and classify them (intent, can-we-help, risk,
+angle, links-allowed), emitting each as an openclaw_mission_events progress event. In approve_first mode
+(the DEFAULT) PROCEED TO DRAFT THIS RUN — the human approves every post, so that review IS the safeguard
+(no multi-day silent window). Only in autonomous mode is the FIRST run per newly-added subreddit
+monitor-only (draft nothing) to learn it before auto-posting. Then continue to STEP 5.
 
 STEP 5 — COMPLIANCE (SKILL-03) per candidate thread (answer all; ANY doubt -> SKIP): subreddit? exact rule?
 mentions allowed? links allowed? educational? relevant to THIS thread? hidden affiliation (must disclose)?

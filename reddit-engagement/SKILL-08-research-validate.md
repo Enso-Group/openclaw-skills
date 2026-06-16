@@ -85,8 +85,8 @@ Run before committing a draft whenever any holds:
 ## Real-time learning loop (every run, before validating a known target)
 1. **Read** the readable surface first: recent own `social_engagement_actions` + `.metrics` for that
    subreddit/topic (a removal / heavy-negative = already a "drop" — don't re-validate it into a re-engage).
-   For "did it block last run?", use **Clawdi memory** (`memory_search`) — `openclaw_mission_events` is
-   write-blind (never GET it).
+   For "did it block last run?", GET your own recent `openclaw_mission_events` (token-scoped readable via
+  the readback grant `20260616170000`; Clawdi memory is an optional extra, and OFF without an embedding key).
 2. **Fold that real signal into demand×supply** — your own past replies/upvotes/removals are first-party
    evidence, weighted alongside the live threads.
 3. **Persist** a `gtm_insights` row when a validate/disprove pattern has held **≥2 periods** (a subreddit

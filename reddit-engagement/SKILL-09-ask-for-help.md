@@ -66,17 +66,18 @@ walls, because **every unnecessary escalation buries the ones that matter.**
 6. **Move on cleanly.** After emitting, do not improvise around the missing capability and do not
    fabricate progress to avoid asking (R0.7). Continue other stages/threads; STOP only on the global
    STOP (R4).
-7. **Treat recurrence as a systemic signal.** Your Help Log is your **durable Clawdi memory**: `memory_add`
-   a one-line note for every blocker you emit, and `memory_search` it at run start (you **cannot** GET
-   `openclaw_mission_events` — it is write-blind; the operator reviews the full blocker history in the app).
+7. **Treat recurrence as a systemic signal.** Your Help Log lives in `openclaw_mission_events` itself: GET
+   your own recent `blocker` events at run start (token-scoped readable via the readback grant
+   `20260616170000`); Clawdi memory is an optional extra (and OFF without an embedding key). The operator
+   also reviews the full blocker history in the app.
    If the **same** need recurs (same missing tool, config gap, decision class) across **2+ runs**, `POST
    gtm_insights` flagging it as a **structural** issue, not another one-off. A need that recurs *after*
    being resolved is a process failure; a need documented, resolved, and never recurring is the system
    getting smarter.
 
 ## Real-time learning loop (every run)
-1. **Recall** your durable Clawdi memory (the Help Log) at run start via `memory_search` — NOT a GET on
-   `openclaw_mission_events` (write-blind, no agent SELECT). `memory_add` each new blocker as you emit it.
+1. **Recall** your recent `openclaw_mission_events` `blocker` events at run start via a GET (token-scoped
+   readback `20260616170000`); Clawdi memory is an optional extra. Log each new blocker as you emit it.
 2. **Adapt:** don't re-attempt a capability that hard-blocked last run (e.g., an unauthorized tool) —
    surface it as still-blocking instead of burning the run rediscovering it; route around non-blocking
    gaps to productive work.
@@ -89,16 +90,16 @@ walls, because **every unnecessary escalation buries the ones that matter.**
 | Every escalation (all three help types) | `POST openclaw_mission_events { workspace_id, mission_id?, event_type:'blocker', message, payload }` |
 | The four parts | `message:"doing: … \| tried: … \| found: … \| need: …"` and `payload:{ stage:'engagement', step:'<e.g. STEP 8 POST>', tool:'<e.g. REDDIT_POST_REDDIT_COMMENT>', status:'blocked' }` |
 | Common Reddit blockers to name | Composio OAuth not authorized (`COMPOSIO_REDDIT_AUTH_CONFIG_ID`); `REDDIT_CREATE_REDDIT_POST` / `REDDIT_POST_REDDIT_COMMENT` 4xx/permission; a write missing `Prefer: return=minimal`; `social_engagement_settings` empty / `targets` undefined; an ambiguous live subreddit rule |
-| Help Log (agent's own recall) | `memory_add` a note per blocker → `memory_search` at run start (`openclaw_mission_events` is write-blind to the agent; the operator reviews the full history in the app) |
+| Help Log (agent's own recall) | GET your own recent `openclaw_mission_events` `blocker` rows at run start (token-scoped readback `20260616170000`); the operator also reviews the full history in the app |
 | Recurring need → systemic flag | `POST gtm_insights { workspace_id, use_case_id?, title, observed, evidence, hypothesis, change_made, status:'active' }` (append-only; no UPDATE) |
 | "Decide" requests target these (agent requests; human/admin sets) | `gtm_pipeline_settings` (`autonomous`, `paused`, `stages.engagement`) · `social_engagement_settings` (`posting_mode`, `targets`, `guardrails`) |
 | Human approval of drafts (not an escalation — the normal gate) | app-side `social_engagement_action_review` (sets `status='approved'`) |
 
 **Flagged mappings:**
-- **No dedicated Help-Log surface**, and the agent **cannot read `openclaw_mission_events`** (write-blind).
-  The agent's own recall lives in **Clawdi memory**; the operator reviews the raw blocker history in the app.
-  Track resolution by a follow-up `note` event or a `gtm_insights` row. (Agent `event_type` ∈
-  `status_change|progress|blocker|result|note`.)
+- **No dedicated Help-Log surface**, but the agent **can now read `openclaw_mission_events`** (token-scoped
+  readback `20260616170000`) — recall prior blockers with a GET; the operator also reviews the raw blocker
+  history in the app. Track resolution by a follow-up `note` event or a `gtm_insights` row. (Agent
+  `event_type` ∈ `status_change|progress|blocker|result|note`.)
 - **No `{CALENDLY_LINK}` in the Reddit-only env.** The source's "book a 10-minute meeting" maps to:
   surface the blocking briefing in the run output (and a configured operator channel/booking link if one
   exists). Kept as concept, flagged as not-configured here.

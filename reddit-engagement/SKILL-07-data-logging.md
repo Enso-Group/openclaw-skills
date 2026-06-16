@@ -30,11 +30,12 @@ comment/post (the source's "Replies" metric). **There is no `metrics.replies` ke
 
 **Read vs blind-write (decides the tally + dedup):**
 - **Readable:** `social_engagement_actions` — `GET ?status=eq.approved` (drafts to post) + **its own
-  rows** (score metrics, dedup, rebuild the tally). This is the agent's only rich **DB** read surface.
-  `openclaw_mission_events` is **write-blind** (no agent SELECT) — never GET it; cross-run recall =
-  durable **Clawdi memory** (`memory_search`/`memory_add`).
-- **Blind append-only** (`Prefer: return=minimal`; the write does not echo the row; **no UPDATE**):
-  `gtm_insights` (contract: no UPDATE), `gtm_sources`. Never depend on reading them back.
+  rows** (score metrics, dedup, rebuild the tally). It is the agent's richest **DB** read surface.
+  `openclaw_mission_events` is also token-scoped readable via the readback grant `20260616170000` — GET
+  your own recent events for cross-run recall (Clawdi memory is optional, and OFF without an embedding key).
+- **Append-only, also token-scoped readable** (`Prefer: return=minimal` so the write doesn't echo the row
+  in the same call; `gtm_insights` has **no UPDATE** grant): `gtm_insights`, `gtm_sources`. You CAN GET
+  them back (readback grant) to dedup/learn — they just aren't echoed on the write itself.
 
 ## Trigger
 Continuous — every run that writes or reads engagement data: drafting (append the row) · posting
@@ -87,11 +88,11 @@ Continuous — every run that writes or reads engagement data: drafting (append 
   blank-guess. **R0 exception:** `source_url`/`content` must be **real** — no real source → you don't
   draft, you **SKIP** (R5). Never a placeholder to satisfy a NOT-NULL column.
 
-**Step 4 — Keep the run-state tally (blind writes).** Because `gtm_insights`/`gtm_sources`/
-`mission_events` writes are blind (return minimal, no read-back), hold this run's counters **in
-memory** as you go, and rebuild cross-run state from the **readable** surfaces: `GET` your own
-`social_engagement_actions` (+ `metrics`) and your own recent `mission_events`. Never assume a blind
-write returned an id or a running total.
+**Step 4 — Keep the run-state tally.** A write sent with `Prefer: return=minimal` does not echo the row,
+so hold this run's counters **in memory** as you go, and rebuild cross-run state from the **readable**
+surfaces (all token-scoped via the readback grant `20260616170000`): `GET` your own
+`social_engagement_actions` (+ `metrics`), `gtm_sources`, `gtm_insights`, and your own recent
+`mission_events`. Never assume a write returned an id or a running total in the same call.
 
 **Step 5 — Idempotency / no double-engage (R0.6).** Before drafting on a thread, `GET`
 `social_engagement_actions` for that thread's `source_url`/`permalink`; if a row exists → already
@@ -145,8 +146,8 @@ consecutive periods**, `POST gtm_insights` with all four parts → four columns:
 | Lifecycle | `.status` (`draft→approved→published\|failed`/`rejected`) | approve is app-side; agent stamps `published`/`failed` |
 | Dedup handle | `.external_id` / `.permalink` | Reddit analogue of the LinkedIn-URL PK; check before drafting |
 | Live metrics | `.metrics` (jsonb) | `upvotes/downvotes/comments/shares/impressions` + `removed`/`negative_replies`; PATCH `return=minimal` |
-| A/B attribution (soft, no FK) | `.metadata.{test_id,variant_id,variant_label}` | stamped at draft INSERT; tally lives in SKILL-06 (`gtm_ab_*`, write-blind) |
-| Subreddit/topic yield | `gtm_sources` (`platform,query,prospects_found,qualified`) | append-only/blind; `query` = subreddit/search |
+| A/B attribution (soft, no FK) | `.metadata.{test_id,variant_id,variant_label}` | stamped at draft INSERT; tally lives in SKILL-06 (`gtm_ab_*`, token-scoped readable; rebuilt from action rows) |
+| Subreddit/topic yield | `gtm_sources` (`platform,query,prospects_found,qualified`) | append + column-update; token-scoped readable; `query` = subreddit/search |
 | Knowledge layer | `gtm_insights` (`title,observed,evidence,hypothesis,change_made,status,use_case_id?`) | append-only / **no UPDATE** → supersede by appending |
 | Telemetry / failure | `openclaw_mission_events` (`progress\|blocker\|note`) | emit a `blocker` on any logging/query failure (R0.7, SKILL-09) |
 

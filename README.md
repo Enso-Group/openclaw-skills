@@ -26,5 +26,5 @@ cd /root/.openclaw/plugin-skills && rm -rf tmp && git clone https://github.com/E
 
 ## Notes
 - Skills reference secrets by **name only** (`PLATFORM_URL`, `PLATFORM_AGENT_TOKEN`, etc.) — **no secret values** are in this repo.
-- The agent reads `social_engagement_actions` (its own rows) but every other agent-write table is **write-blind** (no SELECT); cross-run memory uses Clawdi memory.
+- The agent reads `social_engagement_actions` **and** its other append tables (token-scoped readback grant `20260616170000`: staging, mission_events, sources, warmup, ab_tests, ab_variants, insights); every write still sends `Prefer: return=minimal`. Clawdi memory is optional (and OFF without an embedding key).
 - Human keeps **Approve** (engagement drafts) + **STOP** (`gtm_pipeline_settings.paused`).

@@ -92,8 +92,9 @@ false → do not draft.
   row), and not a generic pitch forced onto an unrelated thread. Fails this → rewrite or SKIP.
 
 ## Real-time learning (read prior outcomes → bias this draft)
-The agent can SELECT `social_engagement_actions` (its `gtm_ab_*` tables are write-blind), so it
-reconstructs what worked from there and steers the new draft accordingly:
+The agent can SELECT `social_engagement_actions` (and, via the readback grant `20260616170000`, its
+`gtm_ab_*` tables too — though the live tally is still rebuilt from the action rows, which carry per-send
+attribution), so it reconstructs what worked from there and steers the new draft accordingly:
 - **Read the metrics.** GET `social_engagement_actions?platform=eq.reddit&status=eq.published&
   select=target_url,content,metadata,metrics&order=published_at.desc`. Each `metrics` carries
   `upvotes`, `replies`, `downvotes`, `removed`, `negative_replies` (real values only; unseen →
