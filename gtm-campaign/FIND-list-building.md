@@ -50,9 +50,10 @@ append tables have no anon SELECT; a 42501 *with* this header = a real permissio
 
 | Stage | Action | Survival | Volume (source model) |
 |---|---|---|---|
-| Raw scrape | Pull profiles by **title + size + location** | 100% | 4,000 |
-| Filter Pass 1 | Remove hard disqualifiers | ~60% survive | 2,400 |
-| Scoring pass | Score every remaining profile | — | 2,400 |
+| Search (FREE) | Apollo `api_search` by **title + size + location** → **obfuscated** candidates (`id`+title+org) | 100% | 4,000 |
+| Filter Pass 1 | Remove hard disqualifiers using the free search fields | ~60% survive | 2,400 |
+| **Enrich (1 credit/person)** | **Apollo `bulk_match` by `id` → reveals real `name` + `linkedin_url` + `email`** | — | credit-budgeted |
+| Scoring pass | Score every **enriched** profile | — | 2,400 |
 | Keep ≥ `min_score` | Discard everything below the threshold | ~50% survive | 1,200 |
 | Final | High-ranking people, ready to use | — | 1,200 |
 
@@ -112,29 +113,43 @@ company's LinkedIn size looks wrong for the ICP stage (e.g. a "Series A" showing
 
 ## 3. Step 2 — Query for REAL people (Apollo and/or Apify) `[Contract]` + `[Build list]`
 
-**Apollo's returned record (real `name` + `linkedin_url`) IS the verified source for that person** — you do NOT
-need to separately open each LinkedIn page to stage it (that over-strict gate produced 0 finds). Only skip a person
-whose Apollo `name` is partial/obfuscated or who has no `linkedin_url` (R0). Apify/browser enrichment is OPTIONAL.
-Use either or both tools; if one is unavailable, run the other — **never stop for "no geography."**
+**Apollo FIND is a TWO-STEP pipeline: SEARCH (free, obfuscated) → ENRICH (1 credit/person, reveals `name` +
+`linkedin_url`).** The search endpoint deliberately returns LOCKED records — `name:null`,
+`last_name_obfuscated:"Po***r"`, `linkedin_url:null`, only `id` + `first_name` + `title` + `organization` +
+`has_*` flags. You CANNOT stage those (R0: no real name, no source_url) — that is exactly why a search-only run
+stages 0. To get a stageable lead you MUST enrich the filtered candidates by their `id` (§3a step 2). Use either
+Apollo (search→enrich) or Apify; if one is unavailable, run the other — **never stop for "no geography."**
 
 ### 3a. Apollo (`APOLLO_API_KEY`) — the default, runs now `[Contract]`
-- **Endpoint — use EXACTLY this** (the old `mixed_people/search` is DEPRECATED → HTTP 422):
+**STEP 1 — SEARCH (free, returns obfuscated candidates):**
+- **Endpoint — use EXACTLY this** (the old `mixed_people/search` is DEPRECATED/403 on lower plans → HTTP 422/403):
   `POST https://api.apollo.io/api/v1/mixed_people/api_search`, header `X-Api-Key: ${APOLLO_API_KEY}`
   (the key MUST be in this header, never in the body) + `Content-Type: application/json`. Body:
   `{ "person_titles":[...], "person_locations":[...](optional), "page":1, "per_page":25 }`.
-  Response: `total_entries` + `people[]`.
+  Response: `total_entries` + `people[]`, where each person is **LOCKED**: `id`, `first_name`,
+  `last_name_obfuscated` ("Po***r"), `title`, `organization{name,has_*}`, `has_email` — **`name` and
+  `linkedin_url` are `null` by design.** This step is FREE and is ONLY a candidate list — never stage from it.
 - `person_titles` — **REQUIRED** (all title variants from the ICP Title field).
 - `person_locations` — **OPTIONAL** (use `target_geography` / persona geography if present, else
   **OMIT** — never stop for missing geography).
-- `api_search` returns each person with a real `name`, `title`, `organization`, and (usually) `linkedin_url`;
-  emails are locked (leave `email:""`, enriched later). **Apollo IS a real, opened data source — use the person's
-  Apollo-returned `linkedin_url` as the `source_url` and stage the person directly; you do NOT need to separately
-  open each LinkedIn page.** Only SKIP a returned person when Apollo gives a **partial/obfuscated name** (e.g.
-  "John D.") or **no `linkedin_url`** (R0 — never stage a partial name); if a browser/Apify is available you MAY
-  enrich those instead of skipping. **Never drop a person who has a real name + `linkedin_url` just because you
-  didn't manually open the page** — that over-strict gate is what silently produced 0 finds.
-- Company-size (stage→size) and pain-keyword targeting then apply as **Filter Pass 1 + scoring** on
-  the returned people (§4–§5); titles are the only required param and geography is never a stopper.
+
+**STEP 1.5 — FILTER (free, before spending credits):** apply Filter Pass 1 (§4) on what search returned
+(`title`, `organization.name`, `has_email`) so you only enrich people worth a credit. Drop obvious mismatches now.
+
+**STEP 2 — ENRICH (1 Apollo credit per person; reveals the real `name` + `linkedin_url` + `email`):**
+- `POST https://api.apollo.io/api/v1/people/bulk_match`, header `X-Api-Key: ${APOLLO_API_KEY}` +
+  `Content-Type: application/json`. Body: `{ "details": [ {"id":"<search id>"}, ... up to 10 per call ] }`.
+  Batch the filtered candidates in groups of ≤10. Response `matches[]` carries the **real** `name`,
+  `first_name`, `last_name`, `linkedin_url`, `title`, `email`, `organization{name,website_url,...}`.
+- **Budget the credits.** Enrich only Filter-Pass-1 survivors, and cap per fire at the use-case top-up target
+  (§7) — do NOT blindly enrich all 25×6. Prefer `has_email:true` candidates first (higher match rate).
+- **Now stage from the ENRICHED record** (§6): the enriched `linkedin_url` is the `source_url`. If enrichment
+  returns a real `name` but `linkedin_url` is still null, you MAY stage using `name` + `organization` (the
+  autoimport dedups on `name|domain`) — but only if you also have a real company domain; otherwise SKIP (R0:
+  no person source_url). If enrichment returns a still-locked/obfuscated `name` → your Apollo plan is out of
+  credits or lacks reveal: POST a FIND blocker ("Apollo enrich returned locked data — check plan credits") and
+  fall back to Apify (§3b).
+- Company-size (stage→size) and pain-keyword targeting apply as **Filter Pass 1 + scoring** (§4–§5).
 
 ### 3b. Apify LinkedIn scrape (`APIFY_TOKEN`) — needs a LinkedIn cookie + actor `[Build list]`+`[Contract]`
 - **Missing the cookie or actor → POST a FIND blocker and continue** with Apollo.
@@ -241,20 +256,24 @@ POST /rest/v1/openclaw_results_staging
 > hand-off. (PRD lifecycles confirm the receiving side: companies `new → leads_found → exhausted →
 > excluded`; leads `ready → engaging → …`.)
 
-**(b) Record yield per source — UPSERT, never a plain INSERT.** The row is unique on
-`(workspace, lower(platform), lower(query))`; re-running the same query each fire must UPDATE the counts, not
-collide. Send the header **`Prefer: resolution=merge-duplicates`** (you hold INSERT+UPDATE on `gtm_sources`). A
-`409 duplicate key (gtm_sources_key_uq)` means you used a plain INSERT — retry with the merge-duplicates header;
-it is never a real blocker. This lets the next fire learn where to spend hunting time (§8):
+**(b) Record yield per source — GET-then-write** (your `gtm_sources` UPDATE grant is COLUMN-scoped and the unique
+key is an EXPRESSION index, so a `Prefer: resolution=merge-duplicates` upsert fails with `42501 permission denied`).
+Use the read-then-write pattern (you now hold token-scoped SELECT):
+1. `GET /rest/v1/gtm_sources?workspace_id=eq.<ws>&platform=eq.<p>&query=eq.<q>&select=id`.
+2. **Found →** `PATCH /rest/v1/gtm_sources?id=eq.<id>` with ONLY `{prospects_found, qualified, last_used_at}`
+   (exactly the column-scoped grant) + `Prefer: return=minimal`.
+3. **Not found →** `POST /rest/v1/gtm_sources` (plain INSERT) + `Prefer: return=minimal`.
+This non-critical yield log lets the next fire learn where to spend hunting time (§8) — **never let it block FIND**
+(on any gtm_sources error, log nothing and continue staging):
 
 ```json
-POST /rest/v1/gtm_sources   // headers as above PLUS  Prefer: resolution=merge-duplicates
+// POST body (insert); the PATCH sends only prospects_found / qualified / last_used_at
 {
   "workspace_id": "<ws>",
   "platform": "apollo",            // or "apify" | "linkedin"
   "query": "<the exact title/keyword/location query you ran>",
-  "prospects_found": 120,          // people returned + verified
-  "qualified": 41,                 // how many scored ≥ min_score
+  "prospects_found": 120,          // people returned by search
+  "qualified": 41,                 // how many enriched + scored ≥ min_score
   "last_used_at": "<iso now>"
 }
 ```

@@ -60,10 +60,14 @@ GET `gtm_use_cases` (the ACTIVE use-cases = your queues, one per ICP) · `gtm_pe
 `social_engagement_settings` · `openclaw_playbooks`. Then run every stage below **for each active use-case**.
 
 ## STAGES (each gated by stages.<x>; depth in the files noted)
-- **FIND** (`find`): per use-case, query Apollo — `POST https://api.apollo.io/api/v1/mixed_people/api_search` (key in the `X-Api-Key` header; the old `mixed_people/search` is DEPRECATED/422) — titles required, geography optional (never stop for "no geography")
-  and/or Apify; verify each on a real page; score (start 10; +signals; keep ≥ `min_score`); POST `openclaw_results_staging`
-  (real `source_url`) + a `gtm_sources` yield row. The APP auto-imports scored finds → `lead_generation_companies` +
-  `lead_generation_leads`. Depth: `gtm-campaign/FIND-list-building.md` (full method) + `reddit/SKILL-08-research-validate.md` (validation).
+- **FIND** (`find`): per use-case, Apollo is a **2-step pipeline** — (1) `POST .../mixed_people/api_search` (FREE; key
+  in `X-Api-Key`; old `mixed_people/search` is DEPRECATED/403) returns **OBFUSCATED** candidates (`id`+`title`+`org`;
+  `name`/`linkedin_url` are `null`) → filter on the free fields → (2) `POST .../people/bulk_match`
+  `{"details":[{"id":"…"}]}` (≤10/call, **1 Apollo credit each**) to REVEAL real `name`+`linkedin_url`+`email`. Stage
+  ONLY enriched people (real name; the enriched `linkedin_url` is the `source_url`); titles required, geography optional;
+  score (start 10; +signals; keep ≥ `min_score`); POST `openclaw_results_staging` + a `gtm_sources` yield row
+  (GET-then-PATCH/INSERT). The APP auto-imports scored finds → `lead_generation_companies` + `lead_generation_leads`.
+  Depth: `gtm-campaign/FIND-list-building.md` (full method) + `reddit/SKILL-08-research-validate.md` (validation).
 - **WARMUP** (`warmup`): for `sourced`/`queued` leads, the 10-touch playbook over 2 days, one due touch per fire, caps +
   no weekends. Touches 1–9 via Composio (your own LinkedIn); touch 10 = INVITE via Unipile. POST `gtm_warmup_actions`.
   Depth: `gtm-campaign/WARMUP-and-first-message.md` (Part A).
