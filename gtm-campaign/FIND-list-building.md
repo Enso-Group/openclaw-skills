@@ -212,7 +212,7 @@ by the query. Add signal points on top; subtract negatives; **keep only `score �
 | Title matches but is clearly a **non-buying** role | **−5** |
 | Company is in a sector the product does **not** serve | **−5** |
 
-Record the components you applied in `signals` and one observed fact in `evidence_of_fit` (§6).
+Record the components you applied in `signals` and one observed fact in `evidence` (§6).
 
 ---
 
@@ -228,24 +228,33 @@ Job Title, Company, Location, LinkedIn URL, Score); "Use Case" = the mission / u
 to (i) confirm your finds landed and (ii) build the already-staged `linkedin_url` set for idempotency. A 42501 on
 that GET means the read-back grant migration isn't applied yet — fall back to your own run tally and continue.
 
+> **CRITICAL — payload keys MUST match the app auto-import contract EXACTLY, or the row stages but NEVER becomes a
+> lead/company.** The `pipeline-autoimport-tick` RPC reads these EXACT keys: person **`name`** (NOT `full_name` — a
+> wrong key here = the person is silently skipped → 0 leads), **`title`** (NOT `job_title`), `company_name`,
+> `company_domain`, `linkedin_url`, `score`, `signals`, `email`, **`evidence`** (NOT `evidence_of_fit`), `location`,
+> `industry`, `company_size`. Use the enriched values from Apollo `bulk_match`.
+
 ```json
 POST /rest/v1/openclaw_results_staging
 {
   "workspace_id": "<ws>",
   "mission_id": "<REQUIRED — the use-case mission from §0.3>",
   "row_kind": "person",
-  "source_url": "<the Apollo-returned linkedin_url for this person (a real URL) — or a page you opened>",
+  "source_url": "<the ENRICHED linkedin_url for this person (a real URL)>",
   "payload": {
-    "full_name": "...",
-    "job_title": "...",
+    "name": "<enriched full name — key MUST be 'name'>",
+    "title": "<job title — key MUST be 'title'>",
     "company_name": "...",
     "company_domain": "...",
-    "linkedin_url": "...",
+    "company_website": "...",
+    "linkedin_url": "<enriched linkedin_url>",
     "email": "",
     "score": 17,
     "signals": { "title_match": 5, "size_match": 5, "pain_in_summary": 4, "hiring_for_pain": 3 },
-    "evidence_of_fit": "one observed fact, e.g. 'posted about SDR ramp 11 days ago'",
-    "location": "..."
+    "evidence": "one observed fact, e.g. 'posted about SDR ramp 11 days ago'",
+    "location": "...",
+    "industry": "...",
+    "company_size": "..."
   }
 }
 ```
