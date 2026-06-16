@@ -46,14 +46,16 @@ message:"<step>: decision + counts", payload:{stage:"engagement"} }` (mission_id
   `COMPOSIO_REDDIT_AUTH_CONFIG_ID`, entity = workspace id). If OAuth is needed, surface the auth URL in
   your output for a human to authorize ONCE, then POST a `social_accounts` row (`purpose='engagement'`,
   `platform='reddit'`, `status='connected'`).
-- **STEP 3 — Map** (depth: `SKILL-01`): for each ACTIVE subreddit re-read its live rules **in the OpenClaw browser**
-  (`https://www.reddit.com/r/<sub>/about/rules/` — public, no login; Composio Reddit read = fallback); skip High-risk.
+- **STEP 3 — Map** (depth: `SKILL-01`): for each ACTIVE subreddit fetch its live rules via Composio
+  **`REDDIT_GET_SUBREDDIT_RULES`** (entity/`user_id` = workspace id); skip High-risk. (Browser + direct HTTP are
+  unreliable for Reddit — browser 404s, reddit.com 403-blocks datacenter IPs — so Composio is the read path.)
   You may now **write `targets`** — PATCH `social_engagement_settings.targets` to add Low/Med-risk subreddits
   you mapped or deactivate removed ones (column-scoped; humans edit it too; live). POST a `gtm_sources` yield row.
-- **STEP 4 — Observe/classify** (depth: `SKILL-02`): read threads **in the OpenClaw browser** (subreddit `new`/
-  Reddit search — public, no login; Composio Reddit read = fallback); emit classifications as `progress` events. In
-  `approve_first` mode (default) **proceed to draft THIS run** (the human approves each draft before it posts); only
-  `autonomous` mode does a monitor-only first run per new subreddit.
+- **STEP 4 — Observe/classify** (depth: `SKILL-02`): find recent threads via Composio
+  **`REDDIT_SEARCH_ACROSS_SUBREDDITS`** (`search_query:"subreddit:<sub> <pain keywords>"`, `sort:"new"`) and/or
+  **`REDDIT_GET_R_TOP`**; the result `permalink` is the `source_url`. Emit classifications as `progress` events. In
+  `approve_first` mode (default) **proceed to draft THIS run** (the human approves each); only `autonomous` mode does a
+  monitor-only first run per new subreddit.
 - **STEP 5 — Compliance** (depth: `SKILL-03`): the 8-question gate; any doubt → SKIP; store result in the
   draft's `metadata.compliance`.
 - **STEP 6 — Draft** (depth: `SKILL-04`, ≤ `daily_cap`, start 3/day TOTAL): standalone-useful, casual,
