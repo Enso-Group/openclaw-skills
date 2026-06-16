@@ -6,14 +6,18 @@ Enforce a mandatory observation period and a continuous read pass: passively mon
 
 ## Trigger
 - Runs at the **top of every engagement run**, after the STOP check, once SKILL-01 has an approved map.
-- **Observation window** = the first few days of deployment (Skill 3 Q&A): monitoring is the *entire* run — **draft nothing, post nothing.** Operators review the daily reports before drafting is unlocked.
-- After the window, monitoring still runs first each loop as the read pass that feeds SKILL-03, bounded by the daily cap.
+- **Observation window applies ONLY in `posting_mode='autonomous'`** (no human gate): then the FIRST run per newly
+  added subreddit is monitor-only (draft nothing) so you learn the community before auto-posting. **In
+  `posting_mode='approve_first'` (the default) DRAFT from the first run** — the human approves every draft before it
+  posts, so that review IS the safeguard; there is no multi-day silent window (that only delayed what the operator
+  wants to see).
+- Monitoring always runs first each loop as the read pass that feeds SKILL-03, bounded by the daily cap.
 
 ## Connection (every REST call)
 `${PLATFORM_URL}/rest/v1/<table>` · headers `apikey`+`Authorization: Bearer ${PLATFORM_ANON_KEY}` · `x-agent-token: ${PLATFORM_AGENT_TOKEN}` · `Content-Type: application/json`. **Reddit READS (threads, comments, subreddit rules) use the OpenClaw browser tool** on the public page — `https://www.reddit.com/r/<sub>/`, `.../new/`, `.../about/rules/`, and Reddit search — which need **no login**. Use Composio Reddit READ actions only as a fallback; if neither is available, POST a blocker and skip (never guess rules/threads from memory). Composio Reddit is still used to POST the comment after human approval. Every POST adds `Prefer: return=minimal`.
 
 ## Workflow (deterministic)
-1. **Honor STOP (R4).** GET `gtm_pipeline_settings?select=autonomous,paused,stages`; stop cleanly if empty / `paused=true` / `autonomous=false` / `stages.engagement=false`. Determine whether the **observation window** is still active (if so, no drafting this run, even post-handoff).
+1. **Honor STOP (R4).** GET `gtm_pipeline_settings?select=autonomous,paused,stages`; stop cleanly if empty / `paused=true` / `autonomous=false` / `stages.engagement=false`. Read `social_engagement_settings.posting_mode`: `approve_first` → **drafting is ON this run** (the human gates each post); `autonomous` → first run per newly-added subreddit is monitor-only, then draft.
 2. **Load the approved boundary.** GET `social_engagement_settings?select=enabled,posting_mode,daily_cap,targets,topics,guardrails` — `targets`=`[{type:'subreddit',value,active}]` (only `active=true` subreddits), `guardrails`=`{require_disclosure, avoid[]}`, plus `gtm_brands`/`gtm_voice_rules` for the help judgement (narrow IDENTITY scope).
 3. **Real-time learning — read before classifying (R6).** GET `social_engagement_actions?select=target_url,source_url,status,metrics,occurred_at&order=occurred_at.desc&limit=100` (own workspace, readable). Use it to: (a) **idempotency** — build the set of already-engaged `source_url`/`permalink`; (b) **demote/skip** any subreddit with a removal (`metrics.removed`), heavy negatives, or `rejected`/`failed` history → classify it `risk_level=high` and do not advance it. `openclaw_mission_events` is **write-blind** — don't GET it; this run's blockers live in context.
 4. **Daily subreddit review — re-read live rules FIRST (Skill 3 §1, R0.4).** For each active target, open its live rules in the **OpenClaw browser** (`https://www.reddit.com/r/<sub>/about/rules/`) **before** looking at any thread, to catch sudden changes (promotion / links / AI-content / temporary bans like megathreads). Composio read = fallback. If neither tool works → POST a blocker for that subreddit and skip it this run. If a subreddit now bans the activity → skip it this run.
@@ -28,8 +32,8 @@ Enforce a mandatory observation period and a continuous read pass: passively mon
    - `rule_check` — are links / brand mentions allowed in *this* context?
    - Attach the real `source_url`/permalink opened this run.
 7. **Emit the daily report (telemetry).** POST `openclaw_mission_events` (`event_type='progress'`, `message:"monitor: C classified, K candidates"`, `payload:{stage:"engagement", step:"MONITOR", classifications:[...7 fields + source_url]}`). During the observation window this is the **only** output.
-8. **Restraint gate (Skill 3 §3).** Observation window active → **stop here.** No drafts, no `social_engagement_actions` writes.
-9. **Hand off (post-window only).** Candidates with `help_potential=yes`, acceptable `risk_level`, and a passing `rule_check` → pass the top items to SKILL-03, **bounded by the daily cap** (`social_engagement_settings.daily_cap`, start 3, hard ceiling `gtm_pipeline_settings.daily_caps.comments`=10). The cap is **total, not per-subreddit**; never exceed it.
+8. **Restraint gate (Skill 3 §3).** ONLY in `autonomous` mode AND the first run for a newly-added subreddit → **stop here** (monitor-only). In `approve_first` → proceed to draft (Step 9). The human-approval gate is the safeguard.
+9. **Hand off to drafting.** Candidates with `help_potential=yes`, acceptable `risk_level`, and a passing `rule_check` → pass the top items to SKILL-03/04, **bounded by the daily cap** (`social_engagement_settings.daily_cap`, start 3, hard ceiling `gtm_pipeline_settings.daily_caps.comments`=10). The cap is **total, not per-subreddit**; never exceed it. These draft rows are written to `social_engagement_actions` (status `draft`) and appear live in the app's engagements feed for the human to approve.
 10. **On any failure** (login / page / tool / ambiguity) → POST `openclaw_mission_events` (`event_type='blocker'`, name the tool/step, SKILL-09) and move on (R0.7).
 
 ## System mapping (R = readable · W = write-blind unless noted)

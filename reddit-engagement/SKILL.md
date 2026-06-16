@@ -51,8 +51,9 @@ message:"<step>: decision + counts", payload:{stage:"engagement"} }` (mission_id
   You may now **write `targets`** — PATCH `social_engagement_settings.targets` to add Low/Med-risk subreddits
   you mapped or deactivate removed ones (column-scoped; humans edit it too; live). POST a `gtm_sources` yield row.
 - **STEP 4 — Observe/classify** (depth: `SKILL-02`): read threads **in the OpenClaw browser** (subreddit `new`/
-  Reddit search — public, no login; Composio Reddit read = fallback); during the observation window draft nothing;
-  emit classifications as `progress` events.
+  Reddit search — public, no login; Composio Reddit read = fallback); emit classifications as `progress` events. In
+  `approve_first` mode (default) **proceed to draft THIS run** (the human approves each draft before it posts); only
+  `autonomous` mode does a monitor-only first run per new subreddit.
 - **STEP 5 — Compliance** (depth: `SKILL-03`): the 8-question gate; any doubt → SKIP; store result in the
   draft's `metadata.compliance`.
 - **STEP 6 — Draft** (depth: `SKILL-04`, ≤ `daily_cap`, start 3/day TOTAL): standalone-useful, casual,
