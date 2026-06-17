@@ -1,7 +1,7 @@
 # Reddit OpenClaw — Step-by-Step Build Runbook (from "only config vars" to live)
 
-This is the exact, ordered checklist to stand up OpenClaw Reddit engagement for ONE project (e.g.
-Sequence). You start with the Clawdi host secrets already set; everything else is below. No step is
+This is the exact, ordered checklist to stand up OpenClaw Reddit engagement for ONE GTM project.
+You start with the Clawdi host secrets already set; everything else is below. No step is
 optional. Each step says **where** (App / Clawdi / Composio) and **exactly what to enter**.
 
 > Model: transparent, agent-owns-publish (you Approve, OpenClaw posts). Prereq already done this
