@@ -101,7 +101,7 @@ list.
 
 | Tool | How to use it | Apify actor |
 |---|---|---|
-| Crunchbase | company page → funding rounds, stage, headcount | `epctex/crunchbase-scraper` |
+| Crunchbase | company page → funding rounds, stage, headcount | `johnvc/crunchbase-company-api` (input `companyNames` or `companyUrls`; read `fundingRounds`, `employeeCount`, `companyUrl`) |
 | Wellfound (AngelList) | company profile shows funding stage + team size | `curious_coder/angel-list-scraper` |
 | LinkedIn company page | "About" → employee count, sometimes stage | already in the scrape via company URL |
 | PitchBook / Dealroom | most accurate funding data | manual lookup (high-priority only) |
